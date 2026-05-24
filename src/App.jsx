@@ -3,9 +3,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { supabase } from "./lib/supabase";
 
-import Home from "./pages/Home";
-import Horarios from "./pages/Horarios";
-import Finanzas from "./pages/Finanzas";
+import Home from "./pages/home";
+import Horarios from "./pages/horarios";
+import Finanzas from "./pages/finanzas";
 import TareasPendientes from "./pages/TareasPendientes";
 
 export default function App() {
