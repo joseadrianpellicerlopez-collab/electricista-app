@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-
+import Materiales from "./pages/Materiales";
 import Home from "./pages/home";
 import Horarios from "./pages/horarios";
 import Finanzas from "./pages/finanzas";
@@ -17,6 +17,11 @@ export default function App() {
           path="/"
           element={<Home />}
         />
+        <Route
+          path="/materiales"
+          element={<Materiales />}
+        />
+
 
         <Route
           path="/horarios"
@@ -38,4 +43,4 @@ export default function App() {
     </BrowserRouter>
 
   );
-}
+}import Materiales from "./pages/Materiales";

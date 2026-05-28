@@ -85,6 +85,12 @@ export default function Home() {
           to="/tareas"
           className="block bg-white dark:bg-gray-900 dark:text-white text-center text-2xl font-semibold p-6 rounded-3xl shadow"
         >
+          <Link
+  to="/materiales"
+  className="block bg-white dark:bg-gray-900 dark:text-white text-center text-2xl font-semibold p-6 rounded-3xl shadow"
+>
+  📦 Lista de material
+</Link>
 
           📝 Tareas pendientes
 
@@ -95,4 +101,9 @@ export default function Home() {
     </div>
 
   );
-}
+}<Link
+  to="/materiales"
+  className="block bg-white dark:bg-gray-900 dark:text-white text-center text-2xl font-semibold p-6 rounded-3xl shadow"
+>
+  📦 Lista de material
+</Link>
