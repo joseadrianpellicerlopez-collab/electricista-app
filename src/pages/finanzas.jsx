@@ -129,11 +129,13 @@ export default function Finanzas() {
   const gastosMensuales = movimientosFiltrados.filter((m) => m.tipo === "mensual");
   const gastosAnuales = movimientosFiltrados.filter((m) => m.tipo === "anual");
   const ingresos = movimientosFiltrados.filter((m) => m.tipo === "ingreso");
+  const gastosPuntuales = movimientosFiltrados.filter((m) => m.tipo === "puntual");
+const totalGastosPuntuales = sumar(gastosPuntuales);
 
   const totalGastosMensuales = sumar(gastosMensuales);
   const totalGastosAnuales = sumar(gastosAnuales);
   const totalIngresos = sumar(ingresos);
-  const beneficio = totalIngresos - totalGastosMensuales - totalGastosAnuales;
+  const beneficio = totalIngresos - totalGastosMensuales - totalGastosAnuales - totalGastosPuntuales;
 
   function ListaMovimientos({ items }) {
     return (
@@ -209,6 +211,7 @@ export default function Finanzas() {
           <option value="mensual">Mensual</option>
           <option value="trimestral">Trimestral</option>
           <option value="anual">Anual</option>
+          <option value="puntual">Gasto puntual</option>
         </select>
 
         <p>Ingresos: <strong>{totalIngresos.toFixed(2)} €</strong></p>
