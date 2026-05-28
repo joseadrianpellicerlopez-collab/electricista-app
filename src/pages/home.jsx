@@ -1,75 +1,98 @@
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 
 export default function Home() {
 
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+
+    const guardado = localStorage.getItem("darkMode");
+
+    if (guardado === "true") {
+      setDarkMode(true);
+      document.documentElement.classList.add("dark");
+    }
+
+  }, []);
+
+  function cambiarModo() {
+
+    const nuevoModo = !darkMode;
+
+    setDarkMode(nuevoModo);
+
+    localStorage.setItem(
+      "darkMode",
+      nuevoModo
+    );
+
+    if (nuevoModo) {
+
+      document.documentElement.classList.add("dark");
+
+    } else {
+
+      document.documentElement.classList.remove("dark");
+
+    }
+  }
+
   return (
 
-    <div className="min-h-screen bg-gray-100 p-5">
+    <div className="min-h-screen bg-gray-100 dark:bg-black transition-colors duration-300 p-5 flex flex-col items-center justify-center">
 
-      <div className="text-center mt-10">
+      <div className="absolute top-5 right-5">
 
-        <h1 className="text-4xl font-bold">
-          Electricista & Aire Acondicionado
-        </h1>
+        <button
+          onClick={cambiarModo}
+          className="bg-white dark:bg-gray-800 dark:text-white px-4 py-2 rounded-2xl shadow"
+        >
 
-        <p className="text-gray-500 mt-2">
-          Tu negocio, en orden.
-        </p>
+          {darkMode ? "☀️" : "🌙"}
+
+        </button>
 
       </div>
 
-      <div className="mt-10 space-y-5">
+      <img
+        src="/logo.png"
+        alt="Logo"
+        className="w-40 h-40 object-contain mb-10"
+      />
 
-        <Link to="/horarios">
+      <div className="w-full max-w-md space-y-5">
 
-          <div className="bg-white rounded-3xl p-6 shadow">
+        <Link
+          to="/horarios"
+          className="block bg-white dark:bg-gray-900 dark:text-white text-center text-2xl font-semibold p-6 rounded-3xl shadow"
+        >
 
-            <h2 className="text-2xl font-semibold">
-              📅 Horarios
-            </h2>
-
-            <p className="text-gray-500 mt-2">
-              Gestiona tus visitas y trabajos
-            </p>
-
-          </div>
-
-        </Link>
-
-        <Link to="/finanzas">
-
-          <div className="bg-white rounded-3xl p-6 shadow">
-
-            <h2 className="text-2xl font-semibold">
-              💰 Finanzas
-            </h2>
-
-            <p className="text-gray-500 mt-2">
-              Controla ingresos y gastos
-            </p>
-
-          </div>
+          📅 Horarios
 
         </Link>
 
-        <Link to="/tareas">
+        <Link
+          to="/finanzas"
+          className="block bg-white dark:bg-gray-900 dark:text-white text-center text-2xl font-semibold p-6 rounded-3xl shadow"
+        >
 
-          <div className="bg-white rounded-3xl p-6 shadow">
+          💰 Finanzas
 
-            <h2 className="text-2xl font-semibold">
-              📝 Tareas pendientes
-            </h2>
+        </Link>
 
-            <p className="text-gray-500 mt-2">
-              Anota cosas por hacer rápidamente
-            </p>
+        <Link
+          to="/tareas"
+          className="block bg-white dark:bg-gray-900 dark:text-white text-center text-2xl font-semibold p-6 rounded-3xl shadow"
+        >
 
-          </div>
+          📝 Tareas pendientes
 
         </Link>
 
       </div>
 
     </div>
+
   );
 }
