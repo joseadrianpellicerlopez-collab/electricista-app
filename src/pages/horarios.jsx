@@ -366,11 +366,27 @@ export default function Horarios() {
 
                   <div className="grid grid-cols-3 gap-3">
                     <button
-                      onClick={() => cambiarEstado(visita.id, "realizado")}
-                      className="bg-green-100 text-green-700 p-3 rounded-2xl"
-                    >
-                      ✅
-                    </button>
+                      <button
+  onClick={() =>
+    cambiarEstado(
+      visita.id,
+      visita.estado === "pendiente"
+        ? "realizado"
+        : "pendiente"
+    )
+  }
+  className={
+    visita.estado === "pendiente"
+
+      ? "bg-orange-100 text-orange-700 p-3 rounded-2xl"
+
+      : "bg-green-100 text-green-700 p-3 rounded-2xl"
+  }
+>
+  {visita.estado === "pendiente"
+    ? "🟠"
+    : "🟢"}
+</button>
 
                     <button
                       onClick={() => editarVisita(visita)}

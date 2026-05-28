@@ -177,7 +177,12 @@ export default function TareasPendientes() {
                   <p className="text-gray-600 mt-1">{tarea.descripcion}</p>
                 )}
                 {tarea.telefono && (
-                  <p className="text-gray-500 mt-1">📞 {tarea.telefono}</p>
+                  <a
+  href={`tel:${tarea.telefono}`}
+  className="text-blue-600 font-semibold block mt-1"
+>
+  📞 {tarea.telefono}
+</a>
                 )}
               </div>
 
