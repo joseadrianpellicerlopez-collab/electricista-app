@@ -366,7 +366,6 @@ export default function Horarios() {
 
                   <div className="grid grid-cols-3 gap-3">
                     <button
-                      <button
   onClick={() =>
     cambiarEstado(
       visita.id,
