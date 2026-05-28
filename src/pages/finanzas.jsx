@@ -3,43 +3,44 @@ import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 export default function Finanzas() {
+
   const [tipo, setTipo] = useState("mensual");
   const [concepto, setConcepto] = useState("");
   const [cantidad, setCantidad] = useState("");
-  const [fecha, setFecha] = useState("");
   const [movimientos, setMovimientos] = useState([]);
   const [editandoId, setEditandoId] = useState(null);
-  const [balance, setBalance] = useState("mensual");
 
   useEffect(() => {
     cargarMovimientos();
   }, []);
 
   async function cargarMovimientos() {
+
     const { data, error } = await supabase
       .from("finanzas")
       .select("*")
-      .order("fecha", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.log(error);
       return;
     }
 
-    setMovimientos(data);
+    setMovimientos(data || []);
   }
 
   function limpiarFormulario() {
+
     setTipo("mensual");
     setConcepto("");
     setCantidad("");
-    setFecha("");
     setEditandoId(null);
   }
 
   async function guardarMovimiento() {
-    if (!concepto || !cantidad || !fecha) {
-      alert("Rellena concepto, cantidad y fecha");
+
+    if (!concepto || !cantidad) {
+      alert("Completa concepto y cantidad");
       return;
     }
 
@@ -47,18 +48,27 @@ export default function Finanzas() {
       tipo,
       concepto,
       cantidad: Number(cantidad),
-      fecha,
     };
 
-    const consulta = editandoId
-      ? supabase.from("finanzas").update(datos).eq("id", editandoId)
-      : supabase.from("finanzas").insert([datos]);
+    let error;
 
-    const { error } = await consulta;
+    if (editandoId) {
+
+      ({ error } = await supabase
+        .from("finanzas")
+        .update(datos)
+        .eq("id", editandoId));
+
+    } else {
+
+      ({ error } = await supabase
+        .from("finanzas")
+        .insert([datos]));
+    }
 
     if (error) {
       console.log(error);
-      alert("Error guardando");
+      alert("Error guardando movimiento");
       return;
     }
 
@@ -66,179 +76,328 @@ export default function Finanzas() {
     cargarMovimientos();
   }
 
-  function editarMovimiento(item) {
-    setTipo(item.tipo || "mensual");
-    setConcepto(item.concepto || "");
-    setCantidad(item.cantidad || "");
-    setFecha(item.fecha || "");
-    setEditandoId(item.id);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  function editarMovimiento(movimiento) {
+
+    setTipo(movimiento.tipo || "mensual");
+    setConcepto(movimiento.concepto || "");
+    setCantidad(movimiento.cantidad || "");
+    setEditandoId(movimiento.id);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }
 
   async function borrarMovimiento(id) {
-    if (!confirm("¿Seguro que quieres borrar este movimiento?")) return;
 
-    const { error } = await supabase.from("finanzas").delete().eq("id", id);
+    const confirmar = window.confirm(
+      "¿Seguro que quieres borrar este movimiento?"
+    );
+
+    if (!confirmar) return;
+
+    const { error } = await supabase
+      .from("finanzas")
+      .delete()
+      .eq("id", id);
 
     if (error) {
       console.log(error);
-      alert("Error borrando");
+      alert("Error borrando movimiento");
       return;
     }
 
     cargarMovimientos();
   }
 
-  function filtrarPorBalance(items) {
-    const hoy = new Date();
+  const gastosMensuales = movimientos.filter(
+    (m) => m.tipo === "mensual"
+  );
 
-    return items.filter((item) => {
-      const fechaItem = new Date(item.fecha);
+  const gastosAnuales = movimientos.filter(
+    (m) => m.tipo === "anual"
+  );
 
-      if (balance === "mensual") {
-        return (
-          fechaItem.getMonth() === hoy.getMonth() &&
-          fechaItem.getFullYear() === hoy.getFullYear()
-        );
-      }
+  const gastosPuntuales = movimientos.filter(
+    (m) => m.tipo === "puntual"
+  );
 
-      if (balance === "trimestral") {
-        const trimestreActual = Math.floor(hoy.getMonth() / 3);
-        const trimestreItem = Math.floor(fechaItem.getMonth() / 3);
+  const ingresos = movimientos.filter(
+    (m) => m.tipo === "ingreso"
+  );
 
-        return (
-          trimestreItem === trimestreActual &&
-          fechaItem.getFullYear() === hoy.getFullYear()
-        );
-      }
+  function sumar(lista) {
 
-      if (balance === "anual") {
-        return fechaItem.getFullYear() === hoy.getFullYear();
-      }
-
-      return true;
-    });
-  }
-
-  function sumar(items) {
-    return items.reduce((total, item) => total + Number(item.cantidad), 0);
-  }
-
-  const movimientosFiltrados = filtrarPorBalance(movimientos);
-
-  const gastosMensuales = movimientosFiltrados.filter((m) => m.tipo === "mensual");
-  const gastosAnuales = movimientosFiltrados.filter((m) => m.tipo === "anual");
-  const ingresos = movimientosFiltrados.filter((m) => m.tipo === "ingreso");
-  const gastosPuntuales = movimientosFiltrados.filter((m) => m.tipo === "puntual");
-const totalGastosPuntuales = sumar(gastosPuntuales);
-
-  const totalGastosMensuales = sumar(gastosMensuales);
-  const totalGastosAnuales = sumar(gastosAnuales);
-  const totalIngresos = sumar(ingresos);
-  const beneficio = totalIngresos - totalGastosMensuales - totalGastosAnuales - totalGastosPuntuales;
-
-  function ListaMovimientos({ items }) {
-    return (
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div key={item.id} className="flex items-center justify-between gap-3 border-b py-3">
-            <div>
-              <p className="font-medium">{item.concepto}</p>
-              <p className="text-gray-500">
-                {item.fecha} · {item.cantidad} €
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => editarMovimiento(item)}
-                className="bg-blue-100 text-blue-700 px-3 py-2 rounded-xl"
-              >
-                ✏️
-              </button>
-
-              <button
-                onClick={() => borrarMovimiento(item.id)}
-                className="bg-red-100 text-red-700 px-3 py-2 rounded-xl"
-              >
-                🗑️
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+    return lista.reduce(
+      (total, item) => total + Number(item.cantidad || 0),
+      0
     );
   }
 
+  const totalMensual = sumar(gastosMensuales);
+  const totalAnual = sumar(gastosAnuales);
+  const totalPuntual = sumar(gastosPuntuales);
+  const totalIngresos = sumar(ingresos);
+
+  const balanceMensual =
+    totalIngresos -
+    totalMensual -
+    totalPuntual;
+
+  const balanceAnual =
+    (totalIngresos * 12) -
+    (totalMensual * 12) -
+    totalAnual -
+    totalPuntual;
+
+  function colorTipo(tipo) {
+
+    if (tipo === "ingreso") {
+      return "bg-green-100 text-green-700";
+    }
+
+    if (tipo === "puntual") {
+      return "bg-red-100 text-red-700";
+    }
+
+    if (tipo === "anual") {
+      return "bg-orange-100 text-orange-700";
+    }
+
+    return "bg-yellow-100 text-yellow-700";
+  }
+
+  function textoTipo(tipo) {
+
+    if (tipo === "mensual") {
+      return "Gasto mensual";
+    }
+
+    if (tipo === "anual") {
+      return "Gasto anual";
+    }
+
+    if (tipo === "puntual") {
+      return "Gasto puntual";
+    }
+
+    return "Ingreso";
+  }
+
   return (
-    <div className="min-h-screen bg-gray-100 p-5">
+
+    <div className="min-h-screen bg-gray-100 dark:bg-black p-5 pb-28">
+
       <div className="flex items-center gap-4 mb-6">
-        <Link to="/" className="bg-white px-4 py-2 rounded-2xl shadow">
+
+        <Link
+          to="/"
+          className="bg-white dark:bg-gray-900 dark:text-white px-4 py-2 rounded-2xl shadow"
+        >
+
           ← Volver
+
         </Link>
 
-        <h1 className="text-4xl font-bold">💰 Finanzas</h1>
+        <h1 className="text-4xl font-bold dark:text-white">
+          💰 Finanzas
+        </h1>
+
       </div>
 
-      <div className="bg-white p-6 rounded-3xl shadow space-y-4">
-        <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="w-full p-4 rounded-2xl border">
-          <option value="mensual">Gasto fijo mensual</option>
-          <option value="anual">Gasto fijo anual</option>
-          <option value="ingreso">Ingreso</option>
+      <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl shadow space-y-4 mb-6">
+
+        <input
+          type="text"
+          placeholder="Concepto"
+          value={concepto}
+          onChange={(e) => setConcepto(e.target.value)}
+          className="w-full p-4 rounded-2xl border dark:bg-gray-800 dark:text-white"
+        />
+
+        <input
+          type="number"
+          placeholder="Cantidad €"
+          value={cantidad}
+          onChange={(e) => setCantidad(e.target.value)}
+          className="w-full p-4 rounded-2xl border dark:bg-gray-800 dark:text-white"
+        />
+
+        <select
+          value={tipo}
+          onChange={(e) => setTipo(e.target.value)}
+          className="w-full p-4 rounded-2xl border dark:bg-gray-800 dark:text-white"
+        >
+
+          <option value="mensual">
+            Gasto fijo mensual
+          </option>
+
+          <option value="anual">
+            Gasto fijo anual
+          </option>
+
+          <option value="puntual">
+            Gasto puntual
+          </option>
+
+          <option value="ingreso">
+            Ingreso
+          </option>
+
         </select>
 
-        <input type="text" placeholder="Concepto" value={concepto} onChange={(e) => setConcepto(e.target.value)} className="w-full p-4 rounded-2xl border" />
+        <button
+          onClick={guardarMovimiento}
+          className="w-full bg-black text-white p-4 rounded-2xl"
+        >
 
-        <input type="number" placeholder="Cantidad €" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-full p-4 rounded-2xl border" />
+          {editandoId
+            ? "Guardar cambios"
+            : "Añadir movimiento"}
 
-        <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full p-4 rounded-2xl border" />
-
-        <button onClick={guardarMovimiento} className="w-full bg-black text-white p-4 rounded-2xl">
-          {editandoId ? "Guardar cambios" : "Añadir"}
         </button>
 
-        {editandoId && (
-          <button onClick={limpiarFormulario} className="w-full bg-gray-200 text-black p-4 rounded-2xl">
-            Cancelar edición
-          </button>
-        )}
       </div>
 
-      <div className="bg-white p-6 rounded-3xl shadow mt-8 space-y-4">
-        <h2 className="text-2xl font-semibold">📊 Balance</h2>
+      <div className="grid grid-cols-2 gap-4 mb-6">
 
-        <select value={balance} onChange={(e) => setBalance(e.target.value)} className="w-full p-4 rounded-2xl border">
-          <option value="mensual">Mensual</option>
-          <option value="trimestral">Trimestral</option>
-          <option value="anual">Anual</option>
-          <option value="puntual">Gasto puntual</option>
-        </select>
+        <div className="bg-white dark:bg-gray-900 dark:text-white p-4 rounded-3xl shadow">
+          <p className="text-sm text-gray-500">
+            Gastos mensuales
+          </p>
 
-        <p>Ingresos: <strong>{totalIngresos.toFixed(2)} €</strong></p>
-        <p>Gastos mensuales: <strong>{totalGastosMensuales.toFixed(2)} €</strong></p>
-        <p>Gastos anuales: <strong>{totalGastosAnuales.toFixed(2)} €</strong></p>
-        <p className="text-xl">Beneficio: <strong>{beneficio.toFixed(2)} €</strong></p>
+          <h2 className="text-2xl font-bold">
+            {totalMensual.toFixed(2)} €
+          </h2>
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 dark:text-white p-4 rounded-3xl shadow">
+          <p className="text-sm text-gray-500">
+            Gastos anuales
+          </p>
+
+          <h2 className="text-2xl font-bold">
+            {totalAnual.toFixed(2)} €
+          </h2>
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 dark:text-white p-4 rounded-3xl shadow">
+          <p className="text-sm text-gray-500">
+            Gastos puntuales
+          </p>
+
+          <h2 className="text-2xl font-bold">
+            {totalPuntual.toFixed(2)} €
+          </h2>
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 dark:text-white p-4 rounded-3xl shadow">
+          <p className="text-sm text-gray-500">
+            Ingresos
+          </p>
+
+          <h2 className="text-2xl font-bold">
+            {totalIngresos.toFixed(2)} €
+          </h2>
+        </div>
+
       </div>
 
-      <div className="mt-8 space-y-6">
-        <section className="bg-white p-5 rounded-3xl shadow">
-          <h2 className="text-2xl font-semibold mb-2">🔴 Gastos fijos mensuales</h2>
-          <p className="mb-4 text-gray-500">Total: {totalGastosMensuales.toFixed(2)} €</p>
-          <ListaMovimientos items={gastosMensuales} />
-        </section>
+      <div className="grid grid-cols-2 gap-4 mb-8">
 
-        <section className="bg-white p-5 rounded-3xl shadow">
-          <h2 className="text-2xl font-semibold mb-2">🟠 Gastos fijos anuales</h2>
-          <p className="mb-4 text-gray-500">Total: {totalGastosAnuales.toFixed(2)} €</p>
-          <ListaMovimientos items={gastosAnuales} />
-        </section>
+        <div className="bg-green-100 p-4 rounded-3xl shadow">
+          <p className="text-sm text-green-700">
+            Balance mensual
+          </p>
 
-        <section className="bg-white p-5 rounded-3xl shadow">
-          <h2 className="text-2xl font-semibold mb-2">🟢 Ingresos</h2>
-          <p className="mb-4 text-gray-500">Total: {totalIngresos.toFixed(2)} €</p>
-          <ListaMovimientos items={ingresos} />
-        </section>
+          <h2 className="text-2xl font-bold text-green-700">
+            {balanceMensual.toFixed(2)} €
+          </h2>
+        </div>
+
+        <div className="bg-blue-100 p-4 rounded-3xl shadow">
+          <p className="text-sm text-blue-700">
+            Balance anual
+          </p>
+
+          <h2 className="text-2xl font-bold text-blue-700">
+            {balanceAnual.toFixed(2)} €
+          </h2>
+        </div>
+
       </div>
+
+      <div className="space-y-4">
+
+        {movimientos.map((movimiento) => (
+
+          <div
+            key={movimiento.id}
+            className="bg-white dark:bg-gray-900 dark:text-white p-5 rounded-3xl shadow space-y-3"
+          >
+
+            <div className="flex justify-between items-start gap-3">
+
+              <div>
+
+                <h2 className="text-2xl font-semibold">
+                  {movimiento.concepto}
+                </h2>
+
+                <p className="text-gray-500 mt-1">
+                  💶 {Number(
+                    movimiento.cantidad
+                  ).toFixed(2)} €
+                </p>
+
+              </div>
+
+              <span
+                className={`${colorTipo(
+                  movimiento.tipo
+                )} px-3 py-1 rounded-full text-sm`}
+              >
+
+                {textoTipo(movimiento.tipo)}
+
+              </span>
+
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+
+              <button
+                onClick={() =>
+                  editarMovimiento(movimiento)
+                }
+                className="bg-blue-100 text-blue-700 p-3 rounded-2xl"
+              >
+
+                ✏️ Editar
+
+              </button>
+
+              <button
+                onClick={() =>
+                  borrarMovimiento(movimiento.id)
+                }
+                className="bg-red-100 text-red-700 p-3 rounded-2xl"
+              >
+
+                🗑️ Borrar
+
+              </button>
+
+            </div>
+
+          </div>
+
+        ))}
+
+      </div>
+
     </div>
   );
 }
