@@ -295,6 +295,7 @@ export default function Materiales() {
               <option value="queda_poco">Queda poco</option>
               <option value="agotado">Agotado</option>
             </select>
+            
 
             <div className="grid grid-cols-2 gap-3">
               <button
