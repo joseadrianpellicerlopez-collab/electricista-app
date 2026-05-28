@@ -43,4 +43,3 @@ export default function App() {
     </BrowserRouter>
 
   );
-}import Materiales from "./pages/Materiales";
