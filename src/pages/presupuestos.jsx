@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import AccesoPresupuestos from '../components/AccesoPresupuestos';
 import CatalogoPresupuestos from '../components/CatalogoPresupuestos';
 import { cacheKey, crearAlmacen, conflicto } from '../lib/presupuestosNube';
-import { CATEGORIAS, calcular, decimal, euros, nuevoPresupuesto, validarPresupuesto } from '../lib/presupuestos';
+import { CATEGORIAS, calcular, compararNombre, decimal, euros, nuevoPresupuesto, validarPresupuesto } from '../lib/presupuestos';
 
 const campo = 'mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
 const boton = 'rounded-xl bg-blue-800 px-4 py-3 font-semibold text-white hover:bg-blue-900 disabled:opacity-50';
@@ -340,7 +340,7 @@ function EditorPresupuestos({ user }) {
       <label className="block text-sm">Nombre del producto o servicio<input autoFocus required maxLength={160} value={producto.nombre} onChange={e => setProducto({ ...producto, nombre: e.target.value })} className={campo} /></label>
       <label className="block text-sm">Precio por unidad, sin IVA (€)<input required inputMode="decimal" placeholder="0,00" value={producto.importe} onChange={e => setProducto({ ...producto, importe: e.target.value })} className={campo} /></label>
       <label className="block text-sm">Categoría<select value={producto.categoria} onChange={e => setProducto({ ...producto, categoria: e.target.value, subcategoria_id: null })} className={campo}>{CATEGORIAS.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
-      <label className="block text-sm">Subcategoría<select required={!producto.id && subcategoria !== 'sin-clasificar'} value={producto.subcategoria_id || ''} onChange={e => setProducto({ ...producto, subcategoria_id: e.target.value || null })} className={campo}><option value="">{producto.id || subcategoria === 'sin-clasificar' ? 'Sin clasificar' : 'Selecciona una subcategoría'}</option>{subcategorias.filter(c => c.categoria === producto.categoria).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
+      <label className="block text-sm">Subcategoría<select required={!producto.id && subcategoria !== 'sin-clasificar'} value={producto.subcategoria_id || ''} onChange={e => setProducto({ ...producto, subcategoria_id: e.target.value || null })} className={campo}><option value="">{producto.id || subcategoria === 'sin-clasificar' ? 'Sin clasificar' : 'Selecciona una subcategoría'}</option>{subcategorias.filter(c => c.categoria === producto.categoria).sort(compararNombre).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
       <p className="text-xs text-slate-500 dark:text-slate-300">Cambiar el precio de la tarjeta no modifica los conceptos que ya has añadido a un presupuesto.</p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <button disabled={ocupado} className={`${boton} w-full`}>{ocupado ? 'Guardando…' : 'Guardar tarjeta'}</button>

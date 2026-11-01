@@ -1,14 +1,14 @@
-import { CATEGORIAS, euros } from '../lib/presupuestos';
+import { CATEGORIAS, compararNombre, euros } from '../lib/presupuestos';
 
 export default function CatalogoPresupuestos({ productos, subcategorias, lineas, categoria, seleccionarCategoria, subcategoria, seleccionarSubcategoria, busqueda, buscar, crearSubcategoria, editarSubcategoria, crearProducto, editarProducto, añadir }) {
   const texto = busqueda.trim().toLocaleLowerCase('es');
   const nombreCategoria = CATEGORIAS.find(c => c.id === categoria)?.nombre;
-  const grupos = subcategorias.filter(s => s.categoria === categoria).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const grupos = subcategorias.filter(s => s.categoria === categoria);
   const sinClasificar = productos.filter(p => p.categoria === categoria && !p.subcategoria_id);
-  const carpetas = [...grupos, ...(sinClasificar.length ? [{ id: 'sin-clasificar', nombre: 'Sin clasificar' }] : [])];
+  const carpetas = [...grupos, ...(sinClasificar.length ? [{ id: 'sin-clasificar', nombre: 'Sin clasificar' }] : [])].sort(compararNombre);
   const pertenece = (p, id) => p.categoria === categoria && (id === 'sin-clasificar' ? !p.subcategoria_id : p.subcategoria_id === id);
   const elegida = carpetas.find(s => s.id === subcategoria);
-  const visibles = productos.filter(p => pertenece(p, subcategoria) && p.nombre.toLocaleLowerCase('es').includes(texto));
+  const visibles = productos.filter(p => pertenece(p, subcategoria) && p.nombre.toLocaleLowerCase('es').includes(texto)).sort(compararNombre);
   const carpetasVisibles = carpetas.filter(s => !texto || s.nombre.toLocaleLowerCase('es').includes(texto) || productos.some(p => pertenece(p, s.id) && p.nombre.toLocaleLowerCase('es').includes(texto)));
   const boton = 'rounded-xl bg-blue-800 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-900';
   return <section className="space-y-5" aria-label="Catálogo de productos">

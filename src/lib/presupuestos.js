@@ -6,6 +6,9 @@ export const CATEGORIAS = [
 
 export const euros = value => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value / 100);
 
+const ordenAlfabetico = new Intl.Collator('es', { sensitivity: 'base', numeric: true });
+export const compararNombre = (a, b) => ordenAlfabetico.compare(a.nombre.trim(), b.nombre.trim());
+
 export function decimal(value) {
   const text = String(value).trim().replace(',', '.');
   return /^\d+(\.\d{1,2})?$/.test(text) ? Number(text) : NaN;
