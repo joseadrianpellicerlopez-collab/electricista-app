@@ -3,21 +3,14 @@ import { useEffect, useState } from "react";
 
 export default function Home() {
 
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(
+    () => localStorage.getItem("darkMode") === "true"
+  );
 
   useEffect(() => {
-
-    const guardado = localStorage.getItem("darkMode");
-
-    if (guardado === "true") {
-
-      setDarkMode(true);
-
-      document.documentElement.classList.add("dark");
-
-    }
-
-  }, []);
+    document.documentElement.classList.toggle("dark", darkMode);
+    localStorage.setItem("darkMode", String(darkMode));
+  }, [darkMode]);
 
   function cambiarModo() {
 
@@ -25,20 +18,6 @@ export default function Home() {
 
     setDarkMode(nuevoModo);
 
-    localStorage.setItem(
-      "darkMode",
-      nuevoModo
-    );
-
-    if (nuevoModo) {
-
-      document.documentElement.classList.add("dark");
-
-    } else {
-
-      document.documentElement.classList.remove("dark");
-
-    }
   }
 
   return (

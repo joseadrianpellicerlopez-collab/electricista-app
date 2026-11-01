@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/horarios",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/finanzas",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/tareas",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/materiales",
+      "destination": "/index.html"
+    }
+  ]
+}

@@ -233,134 +233,6 @@ Tel: ${telefono}
     (t) => t.estado === "realizado"
   );
 
-  function Lista({ items }) {
-
-    return (
-
-      <div className="space-y-3">
-
-        {items.map((tarea) => (
-
-          <div
-            key={tarea.id}
-            className="bg-white dark:bg-gray-900 dark:text-white p-5 rounded-3xl shadow space-y-3"
-          >
-
-            <div className="flex justify-between items-start gap-3">
-
-              <div>
-
-                <p className="text-lg font-semibold">
-                  {tarea.texto}
-                </p>
-
-                {tarea.descripcion && (
-
-                  <p className="text-gray-600 dark:text-gray-300 mt-1">
-                    {tarea.descripcion}
-                  </p>
-
-                )}
-
-                {tarea.telefono && (
-
-                  <a
-                    href={`tel:${tarea.telefono}`}
-                    className="text-blue-600 font-semibold block mt-1"
-                  >
-
-                    📞 {tarea.telefono}
-
-                  </a>
-
-                )}
-
-              </div>
-
-              <span
-                className={
-                  tarea.estado === "realizado"
-
-                    ? "bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm"
-
-                    : "bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm"
-                }
-              >
-
-                {tarea.estado === "realizado"
-                  ? "Realizado"
-                  : "Pendiente"}
-
-              </span>
-
-            </div>
-
-            <select
-              value={tarea.estado}
-              onChange={(e) =>
-                cambiarEstado(
-                  tarea.id,
-                  e.target.value
-                )
-              }
-              className="w-full p-3 rounded-2xl border dark:bg-gray-800 dark:text-white"
-            >
-
-              <option value="pendiente">
-                Pendiente
-              </option>
-
-              <option value="realizado">
-                Realizado
-              </option>
-
-            </select>
-
-            <button
-              onClick={() =>
-                prepararPasarAHorarios(tarea)
-              }
-              className="w-full bg-black text-white p-3 rounded-2xl"
-            >
-
-              Pasar a Horarios
-
-            </button>
-
-            <div className="grid grid-cols-2 gap-3">
-
-              <button
-                onClick={() =>
-                  editarTarea(tarea)
-                }
-                className="bg-blue-100 text-blue-700 p-3 rounded-2xl"
-              >
-
-                ✏️ Editar
-
-              </button>
-
-              <button
-                onClick={() =>
-                  borrarTarea(tarea.id)
-                }
-                className="bg-red-100 text-red-700 p-3 rounded-2xl"
-              >
-
-                🗑️ Borrar
-
-              </button>
-
-            </div>
-
-          </div>
-
-        ))}
-
-      </div>
-
-    );
-  }
 
   return (
 
@@ -530,7 +402,13 @@ Tel: ${telefono}
             🟡 Pendientes
           </h2>
 
-          <Lista items={pendientes} />
+          <Lista
+            items={pendientes}
+            cambiarEstado={cambiarEstado}
+            prepararPasarAHorarios={prepararPasarAHorarios}
+            editarTarea={editarTarea}
+            borrarTarea={borrarTarea}
+          />
 
         </section>
 
@@ -540,7 +418,13 @@ Tel: ${telefono}
             🟢 Realizadas
           </h2>
 
-          <Lista items={realizadas} />
+          <Lista
+            items={realizadas}
+            cambiarEstado={cambiarEstado}
+            prepararPasarAHorarios={prepararPasarAHorarios}
+            editarTarea={editarTarea}
+            borrarTarea={borrarTarea}
+          />
 
         </section>
 
@@ -550,3 +434,131 @@ Tel: ${telefono}
 
   );
 }
+function Lista({ items, cambiarEstado, prepararPasarAHorarios, editarTarea, borrarTarea }) {
+
+    return (
+
+      <div className="space-y-3">
+
+        {items.map((tarea) => (
+
+          <div
+            key={tarea.id}
+            className="bg-white dark:bg-gray-900 dark:text-white p-5 rounded-3xl shadow space-y-3"
+          >
+
+            <div className="flex justify-between items-start gap-3">
+
+              <div>
+
+                <p className="text-lg font-semibold">
+                  {tarea.texto}
+                </p>
+
+                {tarea.descripcion && (
+
+                  <p className="text-gray-600 dark:text-gray-300 mt-1">
+                    {tarea.descripcion}
+                  </p>
+
+                )}
+
+                {tarea.telefono && (
+
+                  <a
+                    href={`tel:${tarea.telefono}`}
+                    className="text-blue-600 font-semibold block mt-1"
+                  >
+
+                    📞 {tarea.telefono}
+
+                  </a>
+
+                )}
+
+              </div>
+
+              <span
+                className={
+                  tarea.estado === "realizado"
+
+                    ? "bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm"
+
+                    : "bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm"
+                }
+              >
+
+                {tarea.estado === "realizado"
+                  ? "Realizado"
+                  : "Pendiente"}
+
+              </span>
+
+            </div>
+
+            <select
+              value={tarea.estado}
+              onChange={(e) =>
+                cambiarEstado(
+                  tarea.id,
+                  e.target.value
+                )
+              }
+              className="w-full p-3 rounded-2xl border dark:bg-gray-800 dark:text-white"
+            >
+
+              <option value="pendiente">
+                Pendiente
+              </option>
+
+              <option value="realizado">
+                Realizado
+              </option>
+
+            </select>
+
+            <button
+              onClick={() =>
+                prepararPasarAHorarios(tarea)
+              }
+              className="w-full bg-black text-white p-3 rounded-2xl"
+            >
+
+              Pasar a Horarios
+
+            </button>
+
+            <div className="grid grid-cols-2 gap-3">
+
+              <button
+                onClick={() =>
+                  editarTarea(tarea)
+                }
+                className="bg-blue-100 text-blue-700 p-3 rounded-2xl"
+              >
+
+                ✏️ Editar
+
+              </button>
+
+              <button
+                onClick={() =>
+                  borrarTarea(tarea.id)
+                }
+                className="bg-red-100 text-red-700 p-3 rounded-2xl"
+              >
+
+                🗑️ Borrar
+
+              </button>
+
+            </div>
+
+          </div>
+
+        ))}
+
+      </div>
+
+    );
+  }

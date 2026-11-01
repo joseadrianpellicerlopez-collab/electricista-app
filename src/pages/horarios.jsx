@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 export default function Horarios() {
+  const [ordenTrabajo, setOrdenTrabajo] = useState("");
   const [cliente, setCliente] = useState("");
   const [telefono, setTelefono] = useState("");
   const [direccion, setDireccion] = useState("");
@@ -69,6 +70,7 @@ export default function Horarios() {
   }
 
   function limpiarFormulario() {
+    setOrdenTrabajo("");
     setCliente("");
     setTelefono("");
     setDireccion("");
@@ -86,6 +88,7 @@ export default function Horarios() {
     }
 
     const datos = {
+      orden_trabajo: ordenTrabajo.trim() || null,
       cliente,
       telefono,
       direccion,
@@ -122,6 +125,7 @@ export default function Horarios() {
   }
 
   function editarVisita(visita) {
+    setOrdenTrabajo(visita.orden_trabajo || "");
     setCliente(visita.cliente || "");
     setTelefono(visita.telefono || "");
     setDireccion(visita.direccion || "");
@@ -178,6 +182,7 @@ export default function Horarios() {
 
   const visitasFiltradas = visitas.filter((visita) => {
     const texto = `
+      ${visita.orden_trabajo || ""}
       ${visita.cliente || ""}
       ${visita.telefono || ""}
       ${visita.direccion || ""}
@@ -214,7 +219,7 @@ export default function Horarios() {
       <div className="bg-white p-4 rounded-3xl shadow mb-6">
         <input
           type="text"
-          placeholder="Buscar cliente, teléfono, dirección, trabajo..."
+          placeholder="Buscar orden de trabajo, cliente, teléfono, dirección, trabajo..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           className="w-full p-4 rounded-2xl border"
@@ -223,6 +228,15 @@ export default function Horarios() {
 
       {mostrarFormulario && (
         <div className="bg-white p-6 rounded-3xl shadow space-y-4 mb-8">
+          <input
+            type="text"
+            aria-label="Orden de trabajo (opcional)"
+            placeholder="Orden de trabajo (opcional)"
+            value={ordenTrabajo}
+            onChange={(e) => setOrdenTrabajo(e.target.value)}
+            className="w-full p-4 rounded-2xl border"
+          />
+
           <input
             type="text"
             placeholder="Cliente"
@@ -315,6 +329,11 @@ export default function Horarios() {
                 >
                   <div className="flex justify-between items-start gap-3">
                     <div>
+                      {visita.orden_trabajo && (
+                        <p className="text-gray-600 font-medium">
+                          Orden de trabajo: {visita.orden_trabajo}
+                        </p>
+                      )}
                       <h3 className="text-2xl font-semibold">
                         {visita.cliente}
                       </h3>
