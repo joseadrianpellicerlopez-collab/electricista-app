@@ -5,7 +5,7 @@ export const cacheKey = owner => `electricista.presupuestos.nube.v1.${owner}`;
 export const conflicto = 'Se ha modificado desde otro dispositivo. Tu borrador sigue a salvo. Guarda una copia para conservar tus cambios.';
 
 export function crearAlmacen(owner, client = supabase) {
-  const versiones = { presupuesto_productos: new Map(), presupuestos: new Map() };
+  const versiones = { presupuesto_productos: new Map(), presupuestos: new Map(), presupuesto_subcategorias: new Map() };
   let cola = Promise.resolve();
   const serializar = fn => {
     const tarea = cola.catch(() => {}).then(fn);
@@ -25,10 +25,11 @@ export function crearAlmacen(owner, client = supabase) {
   function adoptar(data) {
     for (const fila of data.productos) versiones.presupuesto_productos.set(fila.id, fila.version);
     for (const fila of data.documentos) versiones.presupuestos.set(fila.id, fila.version);
+    for (const fila of data.subcategorias || []) versiones.presupuesto_subcategorias.set(fila.id, fila.version);
   }
   async function cargar(actualizarVersiones = true) {
-    const [productos, documentos] = await Promise.all([listar('presupuesto_productos'), listar('presupuestos')]);
-    const data = { productos, documentos };
+    const [productos, documentos, subcategorias] = await Promise.all([listar('presupuesto_productos'), listar('presupuestos'), listar('presupuesto_subcategorias')]);
+    const data = { productos, documentos, subcategorias };
     if (actualizarVersiones) adoptar(data);
     return data;
   }
@@ -42,6 +43,7 @@ export function crearAlmacen(owner, client = supabase) {
       const consulta = anterior ? client.from(tabla).update(payload).eq('owner_id', owner).eq('id', id).eq('version', anterior) : client.from(tabla).insert(payload);
       const { data, error } = await consulta.select('*').maybeSingle();
       if (error?.code === '23505' && tabla === 'presupuesto_productos') throw new Error('Ya existe una tarjeta con ese nombre. Actualiza la lista para verla.');
+      if (error?.code === '23505' && tabla === 'presupuesto_subcategorias') throw new Error('Ya existe una subcategoría con ese nombre. Actualiza la lista para verla.');
       if (!data && (!error || error.code === '23505')) throw new Error(conflicto);
       if (error) throw error;
       versiones[tabla].set(id, data.version);
@@ -49,11 +51,13 @@ export function crearAlmacen(owner, client = supabase) {
     });
   }
   const guardarPresupuesto = draft => guardar('presupuestos', draft.id, { contenido: draft });
-  const guardarProducto = p => guardar('presupuesto_productos', p.id, { nombre: p.nombre, categoria: p.categoria, precio: p.precio });
+  const guardarProducto = p => guardar('presupuesto_productos', p.id, { nombre: p.nombre, categoria: p.categoria, precio: p.precio, subcategoria_id: p.subcategoria_id || null });
+  const guardarSubcategoria = s => guardar('presupuesto_subcategorias', s.id, { nombre: s.nombre, categoria: s.categoria });
   function borrar(tabla, id) {
     return serializar(async () => {
       const anterior = versiones[tabla].get(id);
       const { data, error } = await client.from(tabla).delete().eq('owner_id', owner).eq('id', id).eq('version', anterior || 0).select('id').maybeSingle();
+      if (error?.code === '23503') throw new Error('Esta subcategoría contiene productos. Muévelos a otra subcategoría antes de borrarla.');
       if (error) throw error;
       if (!data) throw new Error('El registro ha cambiado en otro dispositivo. Actualiza la lista antes de borrarlo.');
       versiones[tabla].delete(id);
@@ -91,5 +95,5 @@ export function crearAlmacen(owner, client = supabase) {
     }
     localStorage.setItem(marcador, '1');
   }
-  return { cargar, adoptar, version, ponerVersion, guardarPresupuesto, guardarProducto, importarLocal, borrarProducto: id => borrar('presupuesto_productos', id), borrarPresupuesto: id => borrar('presupuestos', id) };
+  return { cargar, adoptar, version, ponerVersion, guardarPresupuesto, guardarProducto, guardarSubcategoria, importarLocal, borrarSubcategoria: id => borrar('presupuesto_subcategorias', id), borrarProducto: id => borrar('presupuesto_productos', id), borrarPresupuesto: id => borrar('presupuestos', id) };
 }

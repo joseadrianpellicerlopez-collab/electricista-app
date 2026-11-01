@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import AccesoPresupuestos from '../components/AccesoPresupuestos';
+import CatalogoPresupuestos from '../components/CatalogoPresupuestos';
 import { cacheKey, crearAlmacen, conflicto } from '../lib/presupuestosNube';
 import { CATEGORIAS, calcular, decimal, euros, nuevoPresupuesto, validarPresupuesto } from '../lib/presupuestos';
 
@@ -36,6 +37,9 @@ function EditorPresupuestos({ user }) {
   const [inicio] = useState(() => leer(user.id));
   const [almacen] = useState(() => crearAlmacen(user.id));
   const [productos, setProductos] = useState([]);
+  const [subcategorias, setSubcategorias] = useState([]);
+  const [subcategoria, setSubcategoria] = useState(null);
+  const [editarGrupo, setEditarGrupo] = useState(null);
   const [historial, setHistorial] = useState([]);
   const [listo, setListo] = useState(false);
   const [pendiente, setPendiente] = useState(inicio.pendiente);
@@ -62,7 +66,7 @@ function EditorPresupuestos({ user }) {
         await almacen.importarLocal();
         const data = await almacen.cargar();
         if (!activo) return;
-        setProductos(data.productos);
+        setProductos(data.productos); setSubcategorias(data.subcategorias);
         setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
         const remoto = data.documentos.find(d => d.id === inicio.borrador.id);
         if (inicio.pendiente) {
@@ -115,7 +119,7 @@ function EditorPresupuestos({ user }) {
   }, [draft, listo, pendiente, ocupado, generando]);
 
   useEffect(() => {
-    if (!listo || pendiente || ocupado || generando || producto || linea || verHistorial) return;
+    if (!listo || pendiente || ocupado || generando || producto || linea || verHistorial || editarGrupo) return;
     let activo = true;
     async function refrescar() {
       if (document.visibilityState !== 'visible') return;
@@ -124,7 +128,7 @@ function EditorPresupuestos({ user }) {
         const data = await almacen.cargar(false);
         if (!activo || cambios.current !== secuencia) return;
         almacen.adoptar(data);
-        setProductos(data.productos);
+        setProductos(data.productos); setSubcategorias(data.subcategorias);
         setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
         const current = data.documentos.find(d => d.id === draft.id);
         if (current) { setDraft(current.contenido); setDocumentos(null); }
@@ -133,14 +137,14 @@ function EditorPresupuestos({ user }) {
     window.addEventListener('focus', refrescar);
     document.addEventListener('visibilitychange', refrescar);
     return () => { activo = false; window.removeEventListener('focus', refrescar); document.removeEventListener('visibilitychange', refrescar); };
-  }, [almacen, listo, pendiente, ocupado, generando, producto, linea, verHistorial, draft.id]);
+  }, [almacen, listo, pendiente, ocupado, generando, producto, linea, verHistorial, editarGrupo, draft.id]);
 
   async function actualizar() {
     setOcupado(true);
     try {
       if (pendiente) await guardarActual();
       const data = await almacen.cargar();
-      setProductos(data.productos); setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
+      setProductos(data.productos); setSubcategorias(data.subcategorias); setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
       const current = data.documentos.find(d => d.id === draft.id);
       if (current) { setDraft(current.contenido); guardarCache(current.contenido, false); }
       setError(''); setAviso('Actualizado desde Supabase.');
@@ -186,15 +190,42 @@ function EditorPresupuestos({ user }) {
     event.preventDefault();
     const precio = decimal(producto.importe);
     if (!producto.nombre.trim() || !Number.isFinite(precio) || precio < 0 || precio > 99999999) { setError('Escribe un nombre y un precio válido, con un máximo de dos decimales.'); return; }
-    const mismo = productos.some(p => p.id !== producto.id && p.categoria === producto.categoria && p.nombre.trim().toLocaleLowerCase('es') === producto.nombre.trim().toLocaleLowerCase('es'));
+    const mismo = productos.some(p => p.id !== producto.id && p.categoria === producto.categoria && (p.subcategoria_id || null) === (producto.subcategoria_id || null) && p.nombre.trim().toLocaleLowerCase('es') === producto.nombre.trim().toLocaleLowerCase('es'));
     if (mismo) { setError('Ya existe una tarjeta con ese nombre en esta categoría.'); return; }
-    const data = { id: producto.id || crypto.randomUUID(), nombre: producto.nombre.trim(), precio: Math.round(precio * 100), categoria: producto.categoria };
+    const data = { id: producto.id || crypto.randomUUID(), nombre: producto.nombre.trim(), precio: Math.round(precio * 100), categoria: producto.categoria, subcategoria_id: producto.subcategoria_id || null };
     setOcupado(true);
     try {
       const saved = await almacen.guardarProducto(data);
       setProductos(actual => producto.id ? actual.map(p => p.id === producto.id ? saved : p) : [...actual, saved]);
       setProducto(null); setError(''); setAviso('Tarjeta guardada en Supabase. Disponible en tus otros dispositivos.');
     } catch (e) { setError(e.message || 'No se ha podido guardar la tarjeta.'); }
+    finally { setOcupado(false); }
+  }
+
+  async function guardarSubcategoria(event) {
+    event.preventDefault();
+    const nombre = editarGrupo.nombre.trim();
+    if (!nombre || nombre.length > 80) { setError('Escribe un nombre de hasta 80 caracteres.'); return; }
+    if (subcategorias.some(c => c.id !== editarGrupo.id && c.categoria === editarGrupo.categoria && c.nombre.trim().toLocaleLowerCase('es') === nombre.toLocaleLowerCase('es'))) { setError('Ya existe una subcategoría con ese nombre.'); return; }
+    setOcupado(true);
+    try {
+      const saved = await almacen.guardarSubcategoria({ ...editarGrupo, id: editarGrupo.id || crypto.randomUUID(), nombre });
+      setSubcategorias(actual => editarGrupo.id ? actual.map(c => c.id === saved.id ? saved : c) : [...actual, saved]);
+      setCategoria(saved.categoria); setSubcategoria(saved.id); setBusqueda(''); setEditarGrupo(null); setError(''); setAviso('Subcategoría guardada en tu cuenta. Ya puedes añadir productos dentro.');
+    } catch (e) { setError(e.message || 'No se ha podido guardar la subcategoría.'); }
+    finally { setOcupado(false); }
+  }
+
+  async function borrarSubcategoria() {
+    if (productos.some(p => p.subcategoria_id === editarGrupo.id)) { setError('Mueve los productos a otra subcategoría antes de borrar esta.'); return; }
+    if (!window.confirm(`¿Borrar la subcategoría «${editarGrupo.nombre}»?`)) return;
+    setOcupado(true);
+    try {
+      await almacen.borrarSubcategoria(editarGrupo.id);
+      setSubcategorias(actual => actual.filter(c => c.id !== editarGrupo.id));
+      if (subcategoria === editarGrupo.id) setSubcategoria(null);
+      setEditarGrupo(null); setError(''); setAviso('Subcategoría eliminada.');
+    } catch (e) { setError(e.message || 'No se ha podido borrar la subcategoría.'); }
     finally { setOcupado(false); }
   }
 
@@ -253,10 +284,10 @@ function EditorPresupuestos({ user }) {
     finally { setGenerando(false); }
   }
 
-  const visibles = productos.filter(p => p.categoria === categoria && p.nombre.toLocaleLowerCase('es').includes(busqueda.trim().toLocaleLowerCase('es')));
   const total = calcular(draft.lineas, Number(draft.iva));
   const fileName = `Presupuesto-${draft.numero.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-  const nuevoProducto = () => { setError(''); setProducto({ nombre: '', importe: '', categoria }); };
+  const nuevoProducto = () => { if (subcategoria === null) return; setError(''); setProducto({ nombre: '', importe: '', categoria, subcategoria_id: subcategoria === 'sin-clasificar' ? null : subcategoria }); };
+  const nuevaSubcategoria = () => { setError(''); setEditarGrupo({ nombre: '', categoria }); };
 
   return <div className="min-h-screen bg-slate-50 pb-28 text-slate-900 dark:bg-slate-950 dark:text-white">
     <header className="bg-blue-950 px-5 py-6 text-white"><div className="mx-auto max-w-6xl">
@@ -273,19 +304,11 @@ function EditorPresupuestos({ user }) {
 
       <p role="status" className="text-sm text-blue-700 dark:text-blue-200">{aviso}</p>
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_1fr]">
-        <section className="space-y-5" aria-label="Catálogo de productos">
-          <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold">Mis productos y servicios</h2><button onClick={nuevoProducto} className={boton}>+ Crear tarjeta</button></div>
-          <div className="grid grid-cols-3 gap-2" role="group" aria-label="Categorías">{CATEGORIAS.map(c => <button key={c.id} aria-pressed={categoria === c.id} onClick={() => setCategoria(c.id)} className={`rounded-xl px-2 py-3 text-xs font-semibold sm:text-sm ${categoria === c.id ? 'bg-blue-800 text-white' : 'border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}><span aria-hidden="true">{c.icono}</span> {c.nombre}</button>)}</div>
-          <input type="search" aria-label="Buscar tarjeta" value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar producto o servicio…" className={campo} />
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">{visibles.map(p => {
-            const seleccionada = draft.lineas.find(l => l.productoId === p.id);
-            return <article key={p.id} className={`overflow-hidden rounded-2xl border ${seleccionada ? 'border-blue-600 bg-blue-50 dark:bg-blue-950' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}>
-              <button onClick={() => añadir(p)} aria-label={`Añadir ${p.nombre} al presupuesto`} className="flex min-h-36 w-full flex-col items-center justify-center gap-2 p-3 text-center hover:bg-blue-50 dark:hover:bg-blue-950"><span aria-hidden="true" className="text-3xl">{CATEGORIAS.find(c => c.id === p.categoria)?.icono}</span><span className="w-full break-words text-sm font-semibold">{p.nombre}</span><span className="font-bold text-blue-800 dark:text-blue-200">{euros(p.precio)}</span><span className="text-xs text-slate-500 dark:text-slate-300">{seleccionada ? `${seleccionada.cantidad} en presupuesto · +1` : '+ Añadir al presupuesto'}</span></button>
-              <button onClick={() => { setError(''); setProducto({ ...p, importe: String(p.precio / 100) }); }} className="w-full border-t border-slate-200 py-2 text-xs dark:border-slate-700" aria-label={`Editar tarjeta ${p.nombre}`}>Editar tarjeta</button>
-            </article>;
-          })}</div>
-          {!visibles.length && <div className="rounded-2xl border border-dashed border-slate-300 p-7 text-center dark:border-slate-700"><p className="font-medium">{busqueda ? 'No hay tarjetas con ese nombre.' : 'Crea tu primera tarjeta en esta categoría.'}</p><p className="mt-2 text-sm text-slate-500 dark:text-slate-300">Guarda el nombre y el precio una vez. Después, añade el producto con un toque.</p><button onClick={nuevoProducto} className="mt-4 font-semibold text-blue-700 dark:text-blue-200">+ Crear tarjeta</button></div>}
-        </section>
+        <CatalogoPresupuestos productos={productos} subcategorias={subcategorias} lineas={draft.lineas} categoria={categoria}
+          seleccionarCategoria={id => { setCategoria(id); setSubcategoria(null); setBusqueda(''); }}
+          subcategoria={subcategoria} seleccionarSubcategoria={setSubcategoria} busqueda={busqueda} buscar={setBusqueda}
+          crearSubcategoria={nuevaSubcategoria} editarSubcategoria={grupo => { setError(''); setEditarGrupo({ ...grupo }); }}
+          crearProducto={nuevoProducto} editarProducto={p => { setError(''); setProducto({ ...p, importe: String(p.precio / 100) }); }} añadir={añadir} />
 
         <section aria-label="Presupuesto actual" className="space-y-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <h2 className="text-xl font-bold">Tu presupuesto</h2>
@@ -312,10 +335,12 @@ function EditorPresupuestos({ user }) {
       </fieldset>
     </main>
 
+    {editarGrupo && <Modal titulo={editarGrupo.id ? 'Editar subcategoría' : 'Nueva subcategoría'} ocupado={ocupado} cerrar={() => setEditarGrupo(null)}><form onSubmit={guardarSubcategoria} className="space-y-4"><p className="text-sm text-slate-500 dark:text-slate-300">Dentro de {CATEGORIAS.find(c => c.id === editarGrupo.categoria)?.nombre}</p><label className="block text-sm">Nombre de la subcategoría<input autoFocus required maxLength={80} value={editarGrupo.nombre} onChange={e => setEditarGrupo({ ...editarGrupo, nombre: e.target.value })} placeholder="Ej.: instalaciones, reparaciones…" className={campo} /></label>{error && <p role="alert" className="text-sm text-red-600">{error}</p>}<button disabled={ocupado} className={`${boton} w-full`}>{ocupado ? 'Guardando…' : 'Guardar subcategoría'}</button>{editarGrupo.id && <><p className="text-xs text-slate-500 dark:text-slate-300">Para borrarla, mueve antes sus productos a otra subcategoría.</p><button type="button" disabled={ocupado || productos.some(p => p.subcategoria_id === editarGrupo.id)} onClick={borrarSubcategoria} className="w-full py-2 text-sm text-red-600 disabled:opacity-40">Borrar subcategoría</button></>}</form></Modal>}
     {producto && <Modal titulo={producto.id ? 'Editar tarjeta' : 'Nueva tarjeta'} ocupado={ocupado} cerrar={() => setProducto(null)}><form onSubmit={guardarProducto} className="space-y-4">
       <label className="block text-sm">Nombre del producto o servicio<input autoFocus required maxLength={160} value={producto.nombre} onChange={e => setProducto({ ...producto, nombre: e.target.value })} className={campo} /></label>
       <label className="block text-sm">Precio por unidad, sin IVA (€)<input required inputMode="decimal" placeholder="0,00" value={producto.importe} onChange={e => setProducto({ ...producto, importe: e.target.value })} className={campo} /></label>
-      <label className="block text-sm">Categoría<select value={producto.categoria} onChange={e => setProducto({ ...producto, categoria: e.target.value })} className={campo}>{CATEGORIAS.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
+      <label className="block text-sm">Categoría<select value={producto.categoria} onChange={e => setProducto({ ...producto, categoria: e.target.value, subcategoria_id: null })} className={campo}>{CATEGORIAS.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
+      <label className="block text-sm">Subcategoría<select required={!producto.id && subcategoria !== 'sin-clasificar'} value={producto.subcategoria_id || ''} onChange={e => setProducto({ ...producto, subcategoria_id: e.target.value || null })} className={campo}><option value="">{producto.id || subcategoria === 'sin-clasificar' ? 'Sin clasificar' : 'Selecciona una subcategoría'}</option>{subcategorias.filter(c => c.categoria === producto.categoria).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
       <p className="text-xs text-slate-500 dark:text-slate-300">Cambiar el precio de la tarjeta no modifica los conceptos que ya has añadido a un presupuesto.</p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <button disabled={ocupado} className={`${boton} w-full`}>{ocupado ? 'Guardando…' : 'Guardar tarjeta'}</button>
