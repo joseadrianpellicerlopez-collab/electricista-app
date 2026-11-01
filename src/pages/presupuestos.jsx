@@ -1,21 +1,21 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import AccesoPresupuestos from '../components/AccesoPresupuestos';
+import { cacheKey, crearAlmacen, conflicto } from '../lib/presupuestosNube';
 import { CATEGORIAS, calcular, decimal, euros, nuevoPresupuesto, validarPresupuesto } from '../lib/presupuestos';
 
-const KEY = 'electricista.presupuestos.v1';
 const campo = 'mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
 const boton = 'rounded-xl bg-blue-800 px-4 py-3 font-semibold text-white hover:bg-blue-900 disabled:opacity-50';
 
-function leer() {
+function leer(owner) {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return { productos: [], historial: [], borrador: nuevoPresupuesto(), error: '' };
-    const data = JSON.parse(raw);
-    if (!Array.isArray(data.productos) || !Array.isArray(data.historial) || !Array.isArray(data.borrador?.lineas)) throw new Error();
-    if (data.productos.some(p => !p.id || typeof p.nombre !== 'string' || !Number.isSafeInteger(p.precio) || !CATEGORIAS.some(c => c.id === p.categoria))) throw new Error();
-    return { ...data, error: '' };
+    const raw = localStorage.getItem(cacheKey(owner));
+    const data = raw ? JSON.parse(raw) : null;
+    if (data && !Array.isArray(data.borrador?.lineas)) throw new Error();
+    return { borrador: data?.borrador || nuevoPresupuesto(), version: data?.version || 0, pendiente: data?.pendiente || false };
   } catch {
-    return { productos: [], historial: [], borrador: nuevoPresupuesto(), error: 'No se han podido leer los presupuestos guardados. No se sobrescribirán. Recarga la página o revisa el almacenamiento del navegador.' };
+    return { borrador: nuevoPresupuesto(), version: 0, pendiente: false, error: 'No se ha podido leer la copia local. Los datos de Supabase se cargarán al conectar.' };
   }
 }
 
@@ -24,16 +24,25 @@ function Modal({ titulo, cerrar, ocupado, children }) {
   useEffect(() => { const dialog = ref.current; dialog.showModal(); return () => dialog.close(); }, []);
   return <dialog ref={ref} aria-labelledby={id} onCancel={event => { event.preventDefault(); if (!ocupado) cerrar(); }} className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-3xl bg-white p-6 text-slate-900 shadow-2xl backdrop:bg-slate-950/60 dark:bg-slate-900 dark:text-white">
     <div className="mb-5 flex items-center justify-between gap-4"><h2 id={id} className="text-xl font-bold">{titulo}</h2><button type="button" onClick={cerrar} disabled={ocupado} aria-label="Cerrar ventana" className="rounded-lg px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button></div>
-    {children}
+    <fieldset disabled={ocupado} className="min-w-0">{children}</fieldset>
   </dialog>;
 }
 
 export default function Presupuestos() {
-  const [inicio] = useState(leer);
-  const [productos, setProductos] = useState(inicio.productos);
-  const [historial, setHistorial] = useState(inicio.historial);
+  return <AccesoPresupuestos>{user => <EditorPresupuestos key={user.id} user={user} />}</AccesoPresupuestos>;
+}
+
+function EditorPresupuestos({ user }) {
+  const [inicio] = useState(() => leer(user.id));
+  const [almacen] = useState(() => crearAlmacen(user.id));
+  const [productos, setProductos] = useState([]);
+  const [historial, setHistorial] = useState([]);
+  const [listo, setListo] = useState(false);
+  const [pendiente, setPendiente] = useState(inicio.pendiente);
+  const [ocupado, setOcupado] = useState(false);
+  const cambios = useRef(0);
   const [draft, setDraft] = useState(inicio.borrador);
-  const [error, setError] = useState(inicio.error);
+  const [error, setError] = useState(inicio.error || '');
   const [aviso, setAviso] = useState('');
   const [categoria, setCategoria] = useState('climatizacion');
   const [busqueda, setBusqueda] = useState('');
@@ -46,34 +55,157 @@ export default function Presupuestos() {
 
   useEffect(() => () => urls.current.forEach(url => URL.revokeObjectURL(url)), []);
 
-  function guardar(data) {
-    if (inicio.error) { setError(inicio.error); return false; }
-    try { localStorage.setItem(KEY, JSON.stringify(data)); return true; }
-    catch { setError('No se han podido guardar los cambios en este dispositivo. No cierres la página; libera espacio o permite el almacenamiento y vuelve a intentarlo.'); return false; }
+  useEffect(() => {
+    let activo = true;
+    async function conectar() {
+      try {
+        await almacen.importarLocal();
+        const data = await almacen.cargar();
+        if (!activo) return;
+        setProductos(data.productos);
+        setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
+        const remoto = data.documentos.find(d => d.id === inicio.borrador.id);
+        if (inicio.pendiente) {
+          almacen.ponerVersion(inicio.borrador.id, inicio.version);
+          setDraft(inicio.borrador);
+        } else {
+          const elegido = remoto || data.documentos[0];
+          setDraft(elegido ? elegido.contenido : nuevoPresupuesto());
+        }
+        setListo(true);
+        setAviso('Conectado. Tus tarjetas y presupuestos están disponibles en tu cuenta.');
+      } catch {
+        if (activo) setError('No se ha podido conectar o recuperar la copia local. Tus datos se conservan. Recarga para volver a intentarlo.');
+      }
+    }
+    conectar();
+    return () => { activo = false; };
+  }, [almacen, inicio]);
+
+  function guardarCache(doc, sinSincronizar) {
+    try { localStorage.setItem(cacheKey(user.id), JSON.stringify({ borrador: doc, version: almacen.version(doc.id), pendiente: sinSincronizar })); }
+    catch { setError('No se puede guardar la copia local en este navegador. Mantén la página abierta hasta que se confirme el guardado en Supabase.'); }
   }
 
   function cambiarDraft(next) {
-    setDraft(next); setDocumentos(null); setAviso('');
-    if (guardar({ productos, historial, borrador: next })) { setError(''); setAviso('Borrador guardado en este dispositivo.'); }
+    cambios.current += 1;
+    setDraft(next); setDocumentos(null); setPendiente(true);
+    guardarCache(next, true);
+    setAviso('Cambios pendientes de sincronizar…');
   }
   const cambiar = (campo, value) => cambiarDraft({ ...draft, [campo]: value });
 
-  function guardarProducto(event) {
+  async function guardarActual(doc = draft) {
+    const secuencia = cambios.current;
+    const saved = await almacen.guardarPresupuesto(doc);
+    setHistorial(actual => [{ ...saved.contenido, guardado: saved.updated_at }, ...actual.filter(p => p.id !== doc.id)]);
+    if (secuencia === cambios.current) {
+      setPendiente(false); guardarCache(doc, false); setError('');
+      setAviso('Guardado en Supabase. Disponible en tus otros dispositivos.');
+    }
+    return saved;
+  }
+
+  useEffect(() => {
+    if (!listo || !pendiente || ocupado || generando) return;
+    const timer = setTimeout(() => { guardarActual(draft).catch(e => { setError(e.message === conflicto ? conflicto : 'No se ha podido sincronizar. El borrador se conserva en este dispositivo. Pulsa Reintentar cuando tengas conexión.'); }); }, 900);
+    return () => clearTimeout(timer);
+    // The timeout follows the current draft; writes are serialized by the store.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, listo, pendiente, ocupado, generando]);
+
+  useEffect(() => {
+    if (!listo || pendiente || ocupado || generando || producto || linea || verHistorial) return;
+    let activo = true;
+    async function refrescar() {
+      if (document.visibilityState !== 'visible') return;
+      const secuencia = cambios.current;
+      try {
+        const data = await almacen.cargar(false);
+        if (!activo || cambios.current !== secuencia) return;
+        almacen.adoptar(data);
+        setProductos(data.productos);
+        setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
+        const current = data.documentos.find(d => d.id === draft.id);
+        if (current) { setDraft(current.contenido); setDocumentos(null); }
+      } catch { /* Keep the local view until the next refresh or explicit retry. */ }
+    }
+    window.addEventListener('focus', refrescar);
+    document.addEventListener('visibilitychange', refrescar);
+    return () => { activo = false; window.removeEventListener('focus', refrescar); document.removeEventListener('visibilitychange', refrescar); };
+  }, [almacen, listo, pendiente, ocupado, generando, producto, linea, verHistorial, draft.id]);
+
+  async function actualizar() {
+    setOcupado(true);
+    try {
+      if (pendiente) await guardarActual();
+      const data = await almacen.cargar();
+      setProductos(data.productos); setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
+      const current = data.documentos.find(d => d.id === draft.id);
+      if (current) { setDraft(current.contenido); guardarCache(current.contenido, false); }
+      setError(''); setAviso('Actualizado desde Supabase.');
+    } catch (e) { setError(e.message === conflicto ? conflicto : 'No se ha podido actualizar. Revisa tu conexión.'); }
+    finally { setOcupado(false); }
+  }
+
+  async function salir() {
+    setOcupado(true);
+    try {
+      if (pendiente) await guardarActual();
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) throw error;
+    } catch { setError('No se ha podido guardar y cerrar la sesión. Reintenta la sincronización antes de salir.'); setOcupado(false); }
+  }
+
+  async function abrir(p) {
+    setOcupado(true);
+    try {
+      if (pendiente) await guardarActual();
+      const data = await almacen.cargar();
+      const elegido = data.documentos.find(d => d.id === p.id);
+      if (!elegido) throw new Error('El presupuesto se ha borrado desde otro dispositivo. Actualiza la lista.');
+      cambios.current += 1; setPendiente(false); setDraft(elegido.contenido); guardarCache(elegido.contenido, false); setDocumentos(null); setVerHistorial(false); setError('');
+    } catch (e) { setError(e.message || 'No se ha podido abrir el presupuesto.'); }
+    finally { setOcupado(false); }
+  }
+
+  async function borrarPresupuesto(p) {
+    if (!window.confirm('¿Borrar este presupuesto de tu cuenta y de todos tus dispositivos?')) return;
+    setOcupado(true);
+    try {
+      if (pendiente) await guardarActual();
+      await almacen.borrarPresupuesto(p.id);
+      setHistorial(actual => actual.filter(x => x.id !== p.id));
+      if (draft.id === p.id) { const empty = nuevoPresupuesto(); cambios.current += 1; setPendiente(false); setDraft(empty); guardarCache(empty, false); setDocumentos(null); }
+      setError('');
+    } catch (e) { setError(e.message || 'No se ha podido borrar el presupuesto.'); }
+    finally { setOcupado(false); }
+  }
+
+  async function guardarProducto(event) {
     event.preventDefault();
     const precio = decimal(producto.importe);
     if (!producto.nombre.trim() || !Number.isFinite(precio) || precio < 0 || precio > 99999999) { setError('Escribe un nombre y un precio válido, con un máximo de dos decimales.'); return; }
     const mismo = productos.some(p => p.id !== producto.id && p.categoria === producto.categoria && p.nombre.trim().toLocaleLowerCase('es') === producto.nombre.trim().toLocaleLowerCase('es'));
     if (mismo) { setError('Ya existe una tarjeta con ese nombre en esta categoría.'); return; }
     const data = { id: producto.id || crypto.randomUUID(), nombre: producto.nombre.trim(), precio: Math.round(precio * 100), categoria: producto.categoria };
-    const next = producto.id ? productos.map(p => p.id === producto.id ? data : p) : [...productos, data];
-    if (!guardar({ productos: next, historial, borrador: draft })) return;
-    setProductos(next); setProducto(null); setError(''); setAviso('Tarjeta guardada. Su precio se utilizará en los próximos presupuestos.');
+    setOcupado(true);
+    try {
+      const saved = await almacen.guardarProducto(data);
+      setProductos(actual => producto.id ? actual.map(p => p.id === producto.id ? saved : p) : [...actual, saved]);
+      setProducto(null); setError(''); setAviso('Tarjeta guardada en Supabase. Disponible en tus otros dispositivos.');
+    } catch (e) { setError(e.message || 'No se ha podido guardar la tarjeta.'); }
+    finally { setOcupado(false); }
   }
 
-  function borrarProducto() {
+  async function borrarProducto() {
     if (!window.confirm(`¿Borrar la tarjeta «${producto.nombre}»? Los presupuestos que ya la incluyen se conservan.`)) return;
-    const next = productos.filter(p => p.id !== producto.id);
-    if (guardar({ productos: next, historial, borrador: draft })) { setProductos(next); setProducto(null); setError(''); }
+    setOcupado(true);
+    try {
+      await almacen.borrarProducto(producto.id);
+      setProductos(actual => actual.filter(p => p.id !== producto.id)); setProducto(null); setError('');
+    } catch (e) { setError(e.message || 'No se ha podido borrar la tarjeta.'); }
+    finally { setOcupado(false); }
   }
 
   function añadir(p) {
@@ -91,11 +223,14 @@ export default function Presupuestos() {
     setLinea(null);
   }
 
-  function nuevo() {
-    if (draft.lineas.length && !window.confirm('¿Empezar un presupuesto nuevo? El borrador actual se conservará en Guardados.')) return;
-    const next = draft.lineas.length ? [{ ...draft, guardado: new Date().toISOString() }, ...historial.filter(p => p.id !== draft.id)] : historial;
-    const empty = nuevoPresupuesto();
-    if (guardar({ productos, historial: next, borrador: empty })) { setHistorial(next); setDraft(empty); setDocumentos(null); setError(''); setAviso('Nuevo presupuesto.'); }
+  async function nuevo() {
+    setOcupado(true);
+    try {
+      if (pendiente || draft.lineas.length || draft.cliente.trim()) await guardarActual();
+      const empty = nuevoPresupuesto();
+      cambios.current += 1; setPendiente(false); setDraft(empty); guardarCache(empty, false); setDocumentos(null); setError(''); setAviso('Nuevo presupuesto. El anterior está guardado en tu cuenta.');
+    } catch (e) { setError(e.message || 'No se ha podido guardar el presupuesto anterior.'); }
+    finally { setOcupado(false); }
   }
 
   async function generar() {
@@ -106,14 +241,14 @@ export default function Presupuestos() {
     try {
       const { generarArchivos } = await import('../lib/exportarPresupuesto');
       const result = await generarArchivos(draft);
-      const next = [{ ...draft, guardado: new Date().toISOString() }, ...historial.filter(p => p.id !== draft.id)];
-      const guardado = guardar({ productos, historial: next, borrador: draft });
-      if (guardado) setHistorial(next);
+      let guardado = false;
+      try { await guardarActual(); guardado = true; }
+      catch (e) { setError(e.message === conflicto ? conflicto : 'Los archivos están listos, pero el presupuesto sigue pendiente de sincronizar.'); }
       urls.current.forEach(url => URL.revokeObjectURL(url));
       const excel = URL.createObjectURL(result.excel), pdf = URL.createObjectURL(result.pdf);
       urls.current = [excel, pdf];
       setDocumentos({ excel, pdf });
-      setAviso(guardado ? 'Presupuesto generado y guardado en este dispositivo.' : 'Archivos generados. Descárgalos; el borrador no se ha podido guardar.');
+      setAviso(guardado ? 'Presupuesto generado y guardado en Supabase.' : 'Archivos generados. Descárgalos; el borrador se conserva localmente hasta sincronizar.');
     } catch (e) { setError(e.message || 'No se ha podido generar el presupuesto. Inténtalo de nuevo.'); setAviso(''); }
     finally { setGenerando(false); }
   }
@@ -126,12 +261,16 @@ export default function Presupuestos() {
   return <div className="min-h-screen bg-slate-50 pb-28 text-slate-900 dark:bg-slate-950 dark:text-white">
     <header className="bg-blue-950 px-5 py-6 text-white"><div className="mx-auto max-w-6xl">
       <Link to="/" className="inline-block py-2 text-sm text-blue-200">← Volver al inicio</Link>
-      <div className="mt-3 flex flex-wrap items-end justify-between gap-4"><div><p className="mb-1 text-xs font-semibold uppercase tracking-widest text-blue-200">De la tarjeta al presupuesto</p><h1 className="text-3xl font-bold">Presupuestos rápidos</h1></div><div className="flex gap-2"><button disabled={generando} onClick={() => setVerHistorial(true)} className="rounded-xl border border-white/30 px-4 py-2 text-sm">Guardados ({historial.length})</button><button disabled={generando} onClick={nuevo} className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-blue-950">+ Nuevo</button></div></div>
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-4"><div><p className="mb-1 text-xs font-semibold uppercase tracking-widest text-blue-200">De la tarjeta al presupuesto</p><h1 className="text-3xl font-bold">Presupuestos rápidos</h1></div><div className="flex gap-2"><button disabled={generando || ocupado || !listo} onClick={() => setVerHistorial(true)} className="rounded-xl border border-white/30 px-4 py-2 text-sm">Guardados ({historial.length})</button><button disabled={generando || ocupado || !listo} onClick={nuevo} className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-blue-950">+ Nuevo</button></div></div>
     </div></header>
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-5">
-      <fieldset disabled={generando} className="min-w-0 space-y-6">
-      <p className="text-sm text-slate-600 dark:text-slate-300">Tus tarjetas y presupuestos se guardan en este dispositivo. Los precios de las tarjetas no incluyen IVA.</p>
+      <fieldset disabled={generando || ocupado || !listo} className="min-w-0 space-y-6">
+      <p className="text-sm text-slate-600 dark:text-slate-300">Tus tarjetas y presupuestos se guardan en tu cuenta de Supabase. Usa el mismo correo en todos tus dispositivos. Los precios no incluyen IVA.</p>
       {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
+      {!listo && <p role="status" className="text-sm">Conectando y recuperando los datos guardados…</p>}
+      <div className="flex flex-wrap items-center gap-3 text-sm"><span className="break-all">{user.email}</span><button disabled={ocupado || generando || !listo} onClick={actualizar} className="font-semibold text-blue-700 dark:text-blue-200">Actualizar</button><button disabled={ocupado || generando || !listo} onClick={salir} className="text-slate-500 dark:text-slate-300">Cerrar sesión</button>{pendiente && <span className="text-amber-700 dark:text-amber-300">Pendiente de sincronizar</span>}</div>
+      {pendiente && error && <div className="flex flex-wrap gap-3"><button onClick={() => guardarActual().catch(e => setError(e.message || 'No se ha podido sincronizar.'))} className={boton}>Reintentar</button><button onClick={() => cambiarDraft({ ...draft, id: crypto.randomUUID(), numero: `${draft.numero.slice(0,22)}-copia` })} className="rounded-xl border px-4 py-3">Guardar como copia</button></div>}
+
       <p role="status" className="text-sm text-blue-700 dark:text-blue-200">{aviso}</p>
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_1fr]">
         <section className="space-y-5" aria-label="Catálogo de productos">
@@ -173,16 +312,16 @@ export default function Presupuestos() {
       </fieldset>
     </main>
 
-    {producto && <Modal titulo={producto.id ? 'Editar tarjeta' : 'Nueva tarjeta'} cerrar={() => setProducto(null)}><form onSubmit={guardarProducto} className="space-y-4">
+    {producto && <Modal titulo={producto.id ? 'Editar tarjeta' : 'Nueva tarjeta'} ocupado={ocupado} cerrar={() => setProducto(null)}><form onSubmit={guardarProducto} className="space-y-4">
       <label className="block text-sm">Nombre del producto o servicio<input autoFocus required maxLength={160} value={producto.nombre} onChange={e => setProducto({ ...producto, nombre: e.target.value })} className={campo} /></label>
       <label className="block text-sm">Precio por unidad, sin IVA (€)<input required inputMode="decimal" placeholder="0,00" value={producto.importe} onChange={e => setProducto({ ...producto, importe: e.target.value })} className={campo} /></label>
       <label className="block text-sm">Categoría<select value={producto.categoria} onChange={e => setProducto({ ...producto, categoria: e.target.value })} className={campo}>{CATEGORIAS.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
       <p className="text-xs text-slate-500 dark:text-slate-300">Cambiar el precio de la tarjeta no modifica los conceptos que ya has añadido a un presupuesto.</p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      <button className={`${boton} w-full`}>Guardar tarjeta</button>
-      {producto.id && <button type="button" onClick={borrarProducto} className="w-full py-2 text-sm text-red-600">Borrar tarjeta</button>}
+      <button disabled={ocupado} className={`${boton} w-full`}>{ocupado ? 'Guardando…' : 'Guardar tarjeta'}</button>
+      {producto.id && <button type="button" disabled={ocupado} onClick={borrarProducto} className="w-full py-2 text-sm text-red-600">Borrar tarjeta</button>}
     </form></Modal>}
     {linea && <Modal titulo="Editar cantidad" cerrar={() => setLinea(null)}><form onSubmit={guardarLinea} className="space-y-4"><p className="font-medium">{linea.nombre}</p><p>{euros(linea.precio)} por unidad, sin IVA</p><label className="block text-sm">Cantidad<input autoFocus required inputMode="decimal" value={linea.cantidad} onChange={e => setLinea({ ...linea, cantidad: e.target.value })} className={campo} /></label>{error && <p role="alert" className="text-sm text-red-600">{error}</p>}<button className={`${boton} w-full`}>Guardar cantidad</button></form></Modal>}
-    {verHistorial && <Modal titulo="Presupuestos guardados" cerrar={() => setVerHistorial(false)}><p className="mb-4 text-sm text-slate-500 dark:text-slate-300">Guardados en este navegador. Descarga el Excel o el PDF para conservar una copia fuera de este dispositivo.</p><div className="space-y-3">{historial.map(p => <div key={p.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700"><p className="font-bold">{p.numero}</p><p className="break-words text-sm">{p.cliente || 'Sin cliente'} · {p.fecha}</p><p className="my-2">{euros(calcular(p.lineas, Number(p.iva)).total)}</p><div className="flex gap-5"><button className="font-semibold text-blue-700 dark:text-blue-200" onClick={() => { if (draft.id !== p.id && draft.lineas.length && !window.confirm('¿Abrir este presupuesto y sustituir el borrador actual?')) return; cambiarDraft({ ...p, lineas: p.lineas.map(l => ({ ...l })) }); setVerHistorial(false); }}>Abrir</button><button className="text-sm text-red-600" onClick={() => { if (!window.confirm('¿Borrar este presupuesto del historial?')) return; const next = historial.filter(x => x.id !== p.id); if (guardar({ productos, historial: next, borrador: draft })) setHistorial(next); }}>Borrar</button></div></div>)}{!historial.length && <p className="text-sm">Los presupuestos aparecerán aquí al generarlos o empezar uno nuevo.</p>}</div></Modal>}
+    {verHistorial && <Modal titulo="Presupuestos guardados" ocupado={ocupado} cerrar={() => setVerHistorial(false)}><p className="mb-4 text-sm text-slate-500 dark:text-slate-300">Guardados en tu cuenta. Pulsa Actualizar en la pantalla principal para ver los cambios de otros dispositivos.</p><div className="space-y-3">{historial.map(p => <div key={p.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700"><p className="font-bold">{p.numero}</p><p className="break-words text-sm">{p.cliente || 'Sin cliente'} · {p.fecha}</p><p className="my-2">{euros(calcular(p.lineas, Number(p.iva)).total)}</p><div className="flex gap-5"><button className="font-semibold text-blue-700 dark:text-blue-200" disabled={ocupado} onClick={() => abrir(p)}>Abrir</button><button className="text-sm text-red-600" disabled={ocupado} onClick={() => borrarPresupuesto(p)}>Borrar</button></div></div>)}{!historial.length && <p className="text-sm">Los presupuestos aparecerán aquí al guardarse en tu cuenta.</p>}</div></Modal>}
   </div>;
 }
