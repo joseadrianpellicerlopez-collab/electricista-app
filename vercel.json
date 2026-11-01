@@ -15,6 +15,10 @@
     {
       "source": "/materiales",
       "destination": "/index.html"
+    },
+    {
+      "source": "/presupuestos",
+      "destination": "/index.html"
     }
   ]
 }

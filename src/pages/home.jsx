@@ -81,6 +81,13 @@ export default function Home() {
 
         </Link>
 
+        <Link
+          to="/presupuestos"
+          className="block bg-white dark:bg-gray-900 dark:text-white text-center text-2xl font-semibold p-6 rounded-3xl shadow"
+        >
+          🧾 Presupuestos rápidos
+        </Link>
+
       </div>
 
     </div>

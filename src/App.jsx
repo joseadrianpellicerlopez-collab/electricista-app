@@ -5,6 +5,7 @@ import Horarios from "./pages/horarios";
 import Finanzas from "./pages/finanzas";
 import TareasPendientes from "./pages/TareasPendientes";
 import Materiales from "./pages/materiales";
+import Presupuestos from "./pages/presupuestos";
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/finanzas" element={<Finanzas />} />
         <Route path="/tareas" element={<TareasPendientes />} />
         <Route path="/materiales" element={<Materiales />} />
+        <Route path="/presupuestos" element={<Presupuestos />} />
       </Routes>
     </BrowserRouter>
   );
