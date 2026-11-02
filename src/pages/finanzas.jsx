@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { trimestreActual } from '../lib/trimestre';
+import { balanceAnualEstimado } from '../lib/balanceAnual';
 import { agruparMovimientos, claveCategoria, dinero, fechaHoy, fechaRegistro, importeValido, mostrarFecha, nombreCategoria, repositorioFinanzas } from '../lib/finanzas';
 
 const input = 'mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
@@ -57,6 +58,7 @@ export default function Finanzas({ repositorio = repositorioFinanzas }) {
   }));
   const gastosTrimestre = gruposTrimestre.filter(g => !g.ingreso).reduce((total, g) => total + g.total, 0);
   const ingresosTrimestre = gruposTrimestre.filter(g => g.ingreso).reduce((total, g) => total + g.total, 0);
+  const anual = balanceAnualEstimado(movimientos, fechaHoy(), fechaRegistro);
   const grupoActual = detalle ? grupos.find(g => g.key === detalle.key) : null;
   const sugerencias = grupos.filter(g => g.tipo === formulario?.tipo).map(g => g.nombre);
   const listaId = useId();
@@ -104,6 +106,7 @@ export default function Finanzas({ repositorio = repositorioFinanzas }) {
       <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{cargando ? 'Cargando movimientos…' : aviso}</p>
       {[
         { id: 'trimestre', titulo: 'Totales del trimestre actual', detalle: trimestre.etiqueta, gastos: gastosTrimestre, ingresos: ingresosTrimestre },
+        { id: 'anual', titulo: 'Balance anual estimado', detalle: `Año ${anual.year} · Gastos mensuales × 12; otros gastos e ingresos del año × 1.`, gastos: anual.gastos, ingresos: anual.ingresos },
         { id: 'historial', titulo: 'Totales acumulados de todo el historial', detalle: '', gastos, ingresos },
       ].map(resumen => <section key={resumen.id} aria-label={resumen.titulo}><h2 className="mb-3 text-sm font-semibold text-slate-500 dark:text-slate-300">{resumen.titulo}{resumen.detalle && <span className="mt-1 block text-xs font-normal">{resumen.detalle}</span>}</h2><div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-3">{[['Gastos', resumen.gastos, 'text-rose-700 dark:text-rose-300'], ['Ingresos', resumen.ingresos, 'text-teal-700 dark:text-teal-300'], ['Balance', resumen.ingresos - resumen.gastos, 'text-blue-800 dark:text-blue-200']].map(([titulo, total, color]) => <div key={titulo} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><p className="text-sm text-slate-500 dark:text-slate-300">{titulo}</p><p className={`mt-1 break-words text-lg font-bold sm:text-2xl ${color}`}>{cargando ? '…' : cargaConfirmada ? dinero(total) : '—'}</p></div>)}</div></section>)}
       <div className="grid grid-cols-2 gap-3"><button disabled={cargando || ocupado || !cargaConfirmada} onClick={() => nuevo('puntual')} className="rounded-xl bg-rose-600 px-3 py-4 font-semibold text-white hover:bg-rose-700 disabled:opacity-50">+ Registrar gasto</button><button disabled={cargando || ocupado || !cargaConfirmada} onClick={() => nuevo('ingreso')} className="rounded-xl bg-teal-700 px-3 py-4 font-semibold text-white hover:bg-teal-800 disabled:opacity-50">+ Registrar ingreso</button></div>
