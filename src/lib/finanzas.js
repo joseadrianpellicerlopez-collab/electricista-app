@@ -1,7 +1,8 @@
 import { supabase } from './supabase';
 
 export const nombreCategoria = valor => String(valor || '').trim().replace(/\s+/g, ' ');
-export const claveCategoria = (nombre, ingreso) => `${ingreso ? 'ingreso' : 'gasto'}:${nombreCategoria(nombre).normalize('NFC').toLocaleLowerCase('es')}`;
+export const tipoMovimiento = tipo => ['mensual', 'anual', 'puntual', 'ingreso'].includes(tipo) ? tipo : 'puntual';
+export const claveCategoria = (nombre, tipo) => `${tipoMovimiento(tipo)}:${nombreCategoria(nombre).normalize('NFC').toLocaleLowerCase('es')}`;
 export const dinero = centimos => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(centimos / 100);
 export const centimos = valor => Math.round(Number(valor) * 100);
 export const fechaHoy = () => fechaRegistro({ created_at: new Date().toISOString() });
@@ -23,10 +24,11 @@ export function mostrarFecha(fecha) {
 export function agruparMovimientos(movimientos) {
   const grupos = new Map();
   for (const m of movimientos) {
-    const ingreso = m.tipo === 'ingreso';
+    const tipo = tipoMovimiento(m.tipo);
+    const ingreso = tipo === 'ingreso';
     const nombre = nombreCategoria(m.categoria) || nombreCategoria(m.concepto) || 'Sin categoría';
-    const key = claveCategoria(nombre, ingreso);
-    if (!grupos.has(key)) grupos.set(key, { key, nombre, ingreso, total: 0, registros: [] });
+    const key = claveCategoria(nombre, tipo);
+    if (!grupos.has(key)) grupos.set(key, { key, nombre, tipo, ingreso, total: 0, registros: [] });
     const grupo = grupos.get(key);
     grupo.total += centimos(m.cantidad);
     grupo.registros.push({ ...m, fecha: fechaRegistro(m) });
