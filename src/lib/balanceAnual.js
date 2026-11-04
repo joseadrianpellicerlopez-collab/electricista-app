@@ -1,4 +1,4 @@
-export function balanceAnualEstimado(movimientos, hoy, obtenerFecha = m => m.fecha || '') {
+export function balanceAnual(movimientos, hoy, obtenerFecha = m => m.fecha || '') {
   const year = Number(hoy.slice(0, 4));
   const desde = `${year}-01-01`, hasta = `${year + 1}-01-01`;
   let gastos = 0, ingresos = 0;
@@ -7,7 +7,7 @@ export function balanceAnualEstimado(movimientos, hoy, obtenerFecha = m => m.fec
     if (fecha < desde || fecha >= hasta) continue;
     const importe = Math.round(Number(movimiento.cantidad) * 100);
     if (movimiento.tipo === 'ingreso') ingresos += importe;
-    else gastos += importe * (movimiento.tipo === 'mensual' ? 12 : 1);
+    else gastos += importe;
   }
   return { year, gastos, ingresos, balance: ingresos - gastos };
 }
