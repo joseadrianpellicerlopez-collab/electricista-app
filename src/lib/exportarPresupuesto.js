@@ -81,6 +81,7 @@ export async function crearExcel(draft, template) {
       if ([...merges.children].some(m => m.getAttribute('ref') === ref)) return;
       const merge = hoja.createElementNS(NS, 'mergeCell'); merge.setAttribute('ref', ref); merges.append(merge);
     }
+    celda('F2', 'ElectroClima José Adrián');
     celda('I3', draft.numero); celda('I4', draft.fecha.split('-').reverse().join('/'));
     celda('I6', `Página ${numero} de ${paginas.length}`);
     fusionar('G9:H9'); fusionar('G10:H10'); fusionar('G11:H11'); fusionar('G12:H12');
