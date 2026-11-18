@@ -103,7 +103,15 @@ export async function crearExcel(draft, template, opciones = {}) {
     celda('I6', `Página ${numero} de ${paginas.length}`);
     fusionar('G9:H9'); fusionar('G10:H10'); fusionar('G11:H11'); fusionar('G12:H12');
     celda('G9', draft.cliente, null, true); celda('G10', draft.direccion, null, true);
-    celda('G11', draft.nif ? `NIF/CIF: ${draft.nif}` : ''); celda('G12', draft.contacto, null, true);
+    if (draft.direccion2?.trim()) {
+      fusionar('G13:H13');
+      celda('G11', draft.direccion2, null, true);
+      celda('G12', draft.nif ? `NIF/CIF: ${draft.nif}` : '');
+      celda('G13', draft.contacto, null, true);
+    } else {
+      celda('G11', draft.nif ? `NIF/CIF: ${draft.nif}` : '');
+      celda('G12', draft.contacto, null, true); celda('G13', '');
+    }
     celda('F14', 'Ud.'); celda('I14', 'PRECIO UNIDAD');
     const ocupado = lineas.reduce((suma, l) => suma + Math.max(15, partirTexto(l.nombre).length * 12), 0);
     const vacio = lineas.length < 25 ? Math.max(4, (375 - ocupado) / (25 - lineas.length)) : 15;
@@ -194,9 +202,9 @@ export async function crearPDF(draft, logoBytes, opciones = {}) {
     text(`Página ${index + 1} de ${paginas.length}`, 373, 728, 9, false, blanco);
     rect(28, 679, 539, 21, azul); text('DATOS CLIENTE', 40, 685, 11, true, blanco);
     let y = 662;
-    for (const value of [draft.cliente, draft.direccion, draft.nif ? `NIF/CIF: ${draft.nif}` : '', draft.contacto].filter(Boolean)) {
-      for (const line of partirTexto(value, 90)) { text(line, 40, y, 10); y -= 12; }
-    }
+    const datosCliente = [draft.cliente, draft.direccion, draft.direccion2, draft.nif ? `NIF/CIF: ${draft.nif}` : '', draft.contacto].filter(Boolean).flatMap(value => partirTexto(value, 90));
+    const saltoCliente = Math.min(12, 60 / Math.max(1, datosCliente.length - 1));
+    for (const line of datosCliente) { text(line, 40, y, Math.min(10, saltoCliente - 1)); y -= saltoCliente; }
     rect(28, 570, 539, 22, azul); text('UD.', 34, 577, 9, true, blanco); text('DESCRIPCIÓN', 69, 577, 10, true, blanco); right('PRECIO UNIDAD', 477, 577, 9, true, blanco); right('TOTAL', 560, 577, 10, true, blanco);
     y = 570;
     for (const [n, linea] of lineas.entries()) {

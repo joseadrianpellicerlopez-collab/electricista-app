@@ -16,7 +16,7 @@ export function prepararFactura(draft, datos) {
   return {
     ...draft, numero: datos.numero.trim(), fecha: datos.fecha,
     cliente: datos.cliente.trim(), contacto: datos.correo.trim(),
-    nif: datos.nif.trim(), direccion: datos.direccion.trim(),
+    nif: datos.nif.trim(), direccion: datos.direccion.trim(), direccion2: (datos.direccion2 || '').trim(),
     emisorFactura: Object.fromEntries(Object.entries(datos.emisor).map(([key, value]) => [key, value.trim()])),
   };
 }

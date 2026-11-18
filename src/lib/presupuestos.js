@@ -36,7 +36,7 @@ export function validarPresupuesto(draft) {
 export function nuevoPresupuesto() {
   const date = new Date();
   const fecha = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  return { id: crypto.randomUUID(), numero: `P-${fecha.replaceAll('-', '')}-${Date.now().toString().slice(-5)}`, fecha, cliente: '', nif: '', direccion: '', contacto: '', observaciones: '', pago: '', iva: 21, lineas: [] };
+  return { id: crypto.randomUUID(), numero: `P-${fecha.replaceAll('-', '')}-${Date.now().toString().slice(-5)}`, fecha, cliente: '', nif: '', direccion: '', direccion2: '', contacto: '', observaciones: '', pago: '', iva: 21, lineas: [] };
 }
 
 export function partirTexto(texto, max = 48) {
