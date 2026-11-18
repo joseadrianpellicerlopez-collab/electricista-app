@@ -15,7 +15,7 @@ export function validarFactura(draft) {
 export function prepararFactura(draft, datos) {
   return {
     ...draft, numero: datos.numero.trim(), fecha: datos.fecha,
-    cliente: datos.cliente.trim(), contacto: datos.correo.trim(),
+    cliente: datos.cliente.trim(), contacto: (datos.correo || '').trim(), telefonoCliente: (datos.telefono || '').trim(),
     nif: datos.nif.trim(), direccion: datos.direccion.trim(), direccion2: (datos.direccion2 || '').trim(),
     emisorFactura: Object.fromEntries(Object.entries(datos.emisor).map(([key, value]) => [key, value.trim()])),
   };

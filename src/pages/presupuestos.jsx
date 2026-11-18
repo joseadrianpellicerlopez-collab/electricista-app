@@ -293,7 +293,7 @@ function EditorPresupuestos({ user }) {
     const emisor = emisorCuenta;
     if (!emisor) { setError('No se han podido cargar tus datos fiscales. Pulsa Actualizar antes de generar la factura.'); return; }
     const hoy = new Date().toLocaleDateString('sv-SE');
-    setFactura({ numero: draft.factura?.numero || '', fecha: hoy, cliente: draft.cliente || '', nif: draft.nif || '', direccion: draft.direccion || '', direccion2: draft.direccion2 || '', correo: draft.contacto?.includes('@') ? draft.contacto : '', emisor: { ...emisor } });
+    setFactura({ numero: draft.factura?.numero || '', fecha: hoy, cliente: draft.cliente || '', nif: draft.nif || '', direccion: draft.direccion || '', direccion2: draft.direccion2 || '', telefono: draft.telefonoCliente || (draft.contacto && !draft.contacto.includes('@') ? draft.contacto : ''), correo: draft.contacto?.includes('@') ? draft.contacto : '', emisor: { ...emisor } });
   }
 
   async function generarFactura(event) {
@@ -306,7 +306,7 @@ function EditorPresupuestos({ user }) {
     try {
       const { generarArchivosFactura } = await import('../lib/exportarPresupuesto');
       const result = await generarArchivosFactura(doc);
-      const next = { ...draft, cliente: doc.cliente, contacto: doc.contacto, nif: doc.nif, direccion: doc.direccion, direccion2: doc.direccion2, emisorFactura: doc.emisorFactura, factura: { numero: doc.numero, fecha: doc.fecha } };
+      const next = { ...draft, cliente: doc.cliente, contacto: doc.contacto, telefonoCliente: doc.telefonoCliente, nif: doc.nif, direccion: doc.direccion, direccion2: doc.direccion2, emisorFactura: doc.emisorFactura, factura: { numero: doc.numero, fecha: doc.fecha } };
       cambiarDraft(next);
       let guardado = false;
       try { await guardarActual(next); guardado = true; }
@@ -379,9 +379,10 @@ function EditorPresupuestos({ user }) {
       <p className="text-sm text-slate-500 dark:text-slate-300">Fecha de factura: {factura.fecha.split('-').reverse().join('/')}</p>
       <label className="block text-sm">Nombre del cliente<input required maxLength={80} value={factura.cliente} onChange={e => setFactura({ ...factura, cliente: e.target.value })} className={campo} /></label>
       <label className="block text-sm">DNI/CIF del cliente<input required maxLength={30} value={factura.nif} onChange={e => setFactura({ ...factura, nif: e.target.value })} className={campo} /></label>
-      <label className="block text-sm">Dirección del cliente<input required maxLength={120} value={factura.direccion} onChange={e => setFactura({ ...factura, direccion: e.target.value })} className={campo} /></label>
-      <label className="block text-sm">Dirección del cliente, línea 2 (opcional)<input maxLength={120} value={factura.direccion2} onChange={e => setFactura({ ...factura, direccion2: e.target.value })} placeholder="Código postal, localidad, provincia…" className={campo} /></label>
-      <label className="block text-sm">Correo electrónico del cliente<input type="email" maxLength={80} value={factura.correo} onChange={e => setFactura({ ...factura, correo: e.target.value })} className={campo} /></label>
+      <label className="block text-sm">Calle<input required maxLength={120} value={factura.direccion} onChange={e => setFactura({ ...factura, direccion: e.target.value })} className={campo} /></label>
+      <label className="block text-sm">Localidad (opcional)<input maxLength={120} value={factura.direccion2} onChange={e => setFactura({ ...factura, direccion2: e.target.value })} placeholder="Código postal, localidad, provincia…" className={campo} /></label>
+      <label className="block text-sm">Teléfono (opcional)<input type="tel" maxLength={40} value={factura.telefono} onChange={e => setFactura({ ...factura, telefono: e.target.value })} placeholder="Número de teléfono" className={campo} /></label>
+      <label className="block text-sm">Correo electrónico (opcional)<input type="email" maxLength={80} value={factura.correo} onChange={e => setFactura({ ...factura, correo: e.target.value })} className={campo} /></label>
       <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">Tus datos fiscales y tu logo se incluyen automáticamente.</p>
       <p className="text-xs text-slate-500 dark:text-slate-300">El número es manual. Revisa que corresponda a tu serie y que no se repita.</p>
       {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
