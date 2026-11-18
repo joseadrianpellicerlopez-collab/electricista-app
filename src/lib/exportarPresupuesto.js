@@ -2,6 +2,7 @@ import { calcular, decimal, euros, paginar, partirTexto, validarPresupuesto } fr
 
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const NOMBRE_COMERCIAL = 'ElectroClima José Adrián';
 
 async function recurso(path) {
   const response = await fetch(path);
@@ -81,7 +82,7 @@ export async function crearExcel(draft, template) {
       if ([...merges.children].some(m => m.getAttribute('ref') === ref)) return;
       const merge = hoja.createElementNS(NS, 'mergeCell'); merge.setAttribute('ref', ref); merges.append(merge);
     }
-    celda('F2', 'ElectroClima José Adrián');
+    celda('F2', NOMBRE_COMERCIAL);
     celda('I3', draft.numero); celda('I4', draft.fecha.split('-').reverse().join('/'));
     celda('I6', `Página ${numero} de ${paginas.length}`);
     fusionar('G9:H9'); fusionar('G10:H10'); fusionar('G11:H11'); fusionar('G12:H12');
@@ -158,7 +159,7 @@ export async function crearPDF(draft, logoBytes) {
     const rect = (x, y, width, height, color) => page.drawRectangle({ x, y, width, height, color });
     const right = (value, x, y, size = 10, weight = false, color = negro) => text(value, x - (weight ? bold : font).widthOfTextAtSize(clean(value), size), y, size, weight, color);
     rect(362, 711, 205, 103, azul);
-    text('José Adrián Pellicer López', 29, 792, 20, true);
+    text(NOMBRE_COMERCIAL, 29, 792, 20, true);
     page.drawImage(logo, { x: 30, y: 713, width: 100, height: 67 });
     text('648 78 06 82', 143, 746, 11);
     text('electroclimajoseadrian@gmail.com', 143, 730, 9);
@@ -194,7 +195,7 @@ export async function crearPDF(draft, logoBytes) {
     text('Datos para el pago', 34, 82, 9, true);
     partirTexto(draft.pago.replace(/\s+/g, ' '), 52).forEach((line, i) => text(line, 34, 68 - i * 10, 8));
   }
-  doc.setTitle(`Presupuesto ${draft.numero}`); doc.setAuthor('José Adrián Pellicer López');
+  doc.setTitle(`Presupuesto ${draft.numero}`); doc.setAuthor(NOMBRE_COMERCIAL);
   return new Blob([await doc.save()], { type: 'application/pdf' });
 }
 
