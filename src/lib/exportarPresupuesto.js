@@ -16,9 +16,10 @@ function xml(bytes, decode) {
   return doc;
 }
 
-export async function crearExcel(draft, template) {
+export async function crearExcel(draft, template, opciones = {}) {
+  const factura = opciones.factura === true, tipoDocumento = factura ? 'Factura' : 'Presupuesto';
   const { unzipSync, zipSync, strFromU8, strToU8 } = await import('fflate');
-  const archivos = unzipSync(template || await recurso('/presupuestos/plantilla.xlsx'));
+  const archivos = unzipSync(template || await recurso(factura ? '/presupuestos/factura.xlsx' : '/presupuestos/plantilla.xlsx'));
   const original = archivos['xl/worksheets/sheet1.xml'];
   const libro = xml(archivos['xl/workbook.xml'], strFromU8);
   const relaciones = xml(archivos['xl/_rels/workbook.xml.rels'], strFromU8);
@@ -45,7 +46,7 @@ export async function crearExcel(draft, template) {
   }
   const nombres = libro.getElementsByTagNameNS(NS, 'definedNames')[0];
   const lista = libro.getElementsByTagNameNS(NS, 'sheets')[0];
-  lista.children[0].setAttribute('name', 'Presupuesto 1');
+  lista.children[0].setAttribute('name', `${tipoDocumento} 1`);
   while (nombres.firstChild) nombres.removeChild(nombres.firstChild);
   const sumas = [];
 
@@ -83,7 +84,20 @@ export async function crearExcel(draft, template) {
       const merge = hoja.createElementNS(NS, 'mergeCell'); merge.setAttribute('ref', ref); merges.append(merge);
     }
     celda('F2', NOMBRE_COMERCIAL);
-    celda('I3', draft.numero); celda('I4', draft.fecha.split('-').reverse().join('/'));
+    if (factura) {
+      celda('J2', 'FACTURA'); celda('J3', draft.numero); celda('J4', draft.fecha.split('-').reverse().join('/'));
+      celda('I3', 'N.º de factura:'); celda('I4', 'Fecha factura:');
+      fusionar('G3:H3'); fusionar('G4:H4'); fusionar('G6:H6');
+      // Keep the original inset on every line, including wrapped fiscal addresses.
+      for (const [ref, valor] of [['G3', draft.emisorFactura.nombre], ['G4', draft.emisorFactura.direccion], ['G6', `NIF: ${draft.emisorFactura.nif}`]]) {
+        const lineas = partirTexto(valor, 42);
+        celda(ref, lineas.map(linea => '                             ' + linea).join('\n'), null, true);
+        const fila = [...filas.children].find(r => r.getAttribute('r') === ref.match(/\d+/)[0]);
+        fila.setAttribute('ht', String(Math.max(Number(fila.getAttribute('ht')) || 15, lineas.length * 14))); fila.setAttribute('customHeight', '1');
+      }
+    } else {
+      celda('I3', draft.numero); celda('I4', draft.fecha.split('-').reverse().join('/'));
+    }
     celda('I6', `Página ${numero} de ${paginas.length}`);
     fusionar('G9:H9'); fusionar('G10:H10'); fusionar('G11:H11'); fusionar('G12:H12');
     celda('G9', draft.cliente, null, true); celda('G10', draft.direccion, null, true);
@@ -106,7 +120,7 @@ export async function crearExcel(draft, template) {
     fusionar('F41:I45'); celda('F41', notas.join('\n'), null, true);
     for (let n = 42; n <= 45; n++) celda(`F${n}`, '');
     const subtotal = calcular(lineas, 0).base;
-    sumas.push(`'Presupuesto ${numero}'!J46`);
+    sumas.push(`'${tipoDocumento} ${numero}'!J46`);
     const ultima = numero === paginas.length;
     celda('I46', ultima && paginas.length > 1 ? 'BASE TOTAL' : 'BASE IMPONIBLE');
     const baseFormula = ultima && paginas.length > 1 ? `${sumas.slice(0, -1).join('+')}+SUM(J15:J39)` : 'SUM(J15:J39)';
@@ -125,7 +139,7 @@ export async function crearExcel(draft, template) {
     archivos[`xl/worksheets/sheet${numero}.xml`] = serializar(hoja);
     if (numero > 1) {
       const id = `rIdBudget${numero}`;
-      const sheet = libro.createElementNS(NS, 'sheet'); sheet.setAttribute('name', `Presupuesto ${numero}`); sheet.setAttribute('sheetId', String(numero)); sheet.setAttributeNS(REL, 'r:id', id); lista.append(sheet);
+      const sheet = libro.createElementNS(NS, 'sheet'); sheet.setAttribute('name', `${tipoDocumento} ${numero}`); sheet.setAttribute('sheetId', String(numero)); sheet.setAttributeNS(REL, 'r:id', id); lista.append(sheet);
       const relation = relaciones.createElementNS(relaciones.documentElement.namespaceURI, 'Relationship'); relation.setAttribute('Id', id); relation.setAttribute('Type', `${REL}/worksheet`); relation.setAttribute('Target', `worksheets/sheet${numero}.xml`); relaciones.documentElement.append(relation);
       tipo(`/xl/worksheets/sheet${numero}.xml`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml');
       const rels = strFromU8(archivos['xl/worksheets/_rels/sheet1.xml.rels']).replace('drawing1.xml', `drawing${numero}.xml`);
@@ -134,7 +148,7 @@ export async function crearExcel(draft, template) {
       archivos[`xl/drawings/_rels/drawing${numero}.xml.rels`] = archivos['xl/drawings/_rels/drawing1.xml.rels'];
       tipo(`/xl/drawings/drawing${numero}.xml`, 'application/vnd.openxmlformats-officedocument.drawing+xml');
     }
-    const area = libro.createElementNS(NS, 'definedName'); area.setAttribute('name', '_xlnm.Print_Area'); area.setAttribute('localSheetId', String(index)); area.textContent = `'Presupuesto ${numero}'!$A$1:$K$51`; nombres.append(area);
+    const area = libro.createElementNS(NS, 'definedName'); area.setAttribute('name', '_xlnm.Print_Area'); area.setAttribute('localSheetId', String(index)); area.textContent = `'${tipoDocumento} ${numero}'!$A$1:$K$51`; nombres.append(area);
   });
   const calc = libro.getElementsByTagNameNS(NS, 'calcPr')[0]; calc.setAttribute('fullCalcOnLoad', '1');
   archivos['xl/styles.xml'] = serializar(estilos); archivos['xl/workbook.xml'] = serializar(libro); archivos['xl/_rels/workbook.xml.rels'] = serializar(relaciones); archivos['[Content_Types].xml'] = serializar(tipos);
@@ -144,7 +158,8 @@ export async function crearExcel(draft, template) {
   return new Blob([zipSync(archivos)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
 
-export async function crearPDF(draft, logoBytes) {
+export async function crearPDF(draft, logoBytes, opciones = {}) {
+  const factura = opciones.factura === true, tipoDocumento = factura ? 'Factura' : 'Presupuesto';
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica), bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -161,10 +176,18 @@ export async function crearPDF(draft, logoBytes) {
     rect(362, 711, 205, 103, azul);
     text(NOMBRE_COMERCIAL, 29, 792, 20, true);
     page.drawImage(logo, { x: 30, y: 713, width: 100, height: 67 });
-    text('648 78 06 82', 143, 746, 11);
-    text('electroclimajoseadrian@gmail.com', 143, 730, 9);
-    text('PRESUPUESTO', 373, 790, 19, true, blanco);
-    text(draft.numero, 373, 767, 10, false, blanco);
+    if (factura) {
+      text(draft.emisorFactura.nombre, 143, 774, Math.min(9, 205 / Math.max(1, font.widthOfTextAtSize(clean(draft.emisorFactura.nombre), 1))));
+      text(`NIF: ${draft.emisorFactura.nif}`, 143, 762, 9);
+      partirTexto(draft.emisorFactura.direccion, 42).slice(0, 3).forEach((line, i) => text(line, 143, 750 - i * 10, 8));
+      text('648 78 06 82', 143, 718, 9);
+      text('electroclimajoseadrian@gmail.com', 143, 706, 8);
+    } else {
+      text('648 78 06 82', 143, 746, 11);
+      text('electroclimajoseadrian@gmail.com', 143, 730, 9);
+    }
+    text(tipoDocumento.toLocaleUpperCase('es'), 373, 790, 19, true, blanco);
+    text(draft.numero, 373, 767, Math.min(10, 180 / Math.max(1, font.widthOfTextAtSize(clean(draft.numero), 1))), false, blanco);
     text(draft.fecha.split('-').reverse().join('/'), 373, 749, 10, false, blanco);
     text(`Página ${index + 1} de ${paginas.length}`, 373, 728, 9, false, blanco);
     rect(28, 679, 539, 21, azul); text('DATOS CLIENTE', 40, 685, 11, true, blanco);
@@ -195,7 +218,7 @@ export async function crearPDF(draft, logoBytes) {
     text('Datos para el pago', 34, 82, 9, true);
     partirTexto(draft.pago.replace(/\s+/g, ' '), 52).forEach((line, i) => text(line, 34, 68 - i * 10, 8));
   }
-  doc.setTitle(`Presupuesto ${draft.numero}`); doc.setAuthor(NOMBRE_COMERCIAL);
+  doc.setTitle(`${tipoDocumento} ${draft.numero}`); doc.setAuthor(NOMBRE_COMERCIAL);
   return new Blob([await doc.save()], { type: 'application/pdf' });
 }
 
@@ -203,5 +226,17 @@ export async function generarArchivos(draft) {
   const error = validarPresupuesto(draft);
   if (error) throw new Error(error);
   const [excel, pdf] = await Promise.all([crearExcel(draft), crearPDF(draft)]);
+  return { excel, pdf };
+}
+
+
+export async function generarArchivosFactura(draft) {
+  const { validarFactura } = await import('./facturas');
+  const error = validarFactura(draft);
+  if (error) throw new Error(error);
+  const [excel, pdf] = await Promise.all([
+    crearExcel(draft, undefined, { factura: true }),
+    crearPDF(draft, undefined, { factura: true }),
+  ]);
   return { excel, pdf };
 }

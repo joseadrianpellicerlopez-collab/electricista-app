@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import AccesoPresupuestos from '../components/AccesoPresupuestos';
 import CatalogoPresupuestos from '../components/CatalogoPresupuestos';
 import { cacheKey, crearAlmacen, conflicto } from '../lib/presupuestosNube';
+import { prepararFactura, validarFactura } from '../lib/facturas';
 import { CATEGORIAS, calcular, compararNombre, decimal, euros, nuevoPresupuesto, validarPresupuesto } from '../lib/presupuestos';
 
 const campo = 'mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
@@ -55,6 +56,8 @@ function EditorPresupuestos({ user }) {
   const [verHistorial, setVerHistorial] = useState(false);
   const [generando, setGenerando] = useState(false);
   const [documentos, setDocumentos] = useState(null);
+  const [factura, setFactura] = useState(null);
+  const bloqueoExportar = useRef(false);
   const urls = useRef([]);
 
   useEffect(() => () => urls.current.forEach(url => URL.revokeObjectURL(url)), []);
@@ -119,7 +122,7 @@ function EditorPresupuestos({ user }) {
   }, [draft, listo, pendiente, ocupado, generando]);
 
   useEffect(() => {
-    if (!listo || pendiente || ocupado || generando || producto || linea || verHistorial || editarGrupo) return;
+    if (!listo || pendiente || ocupado || generando || producto || linea || verHistorial || editarGrupo || factura) return;
     let activo = true;
     async function refrescar() {
       if (document.visibilityState !== 'visible') return;
@@ -137,7 +140,7 @@ function EditorPresupuestos({ user }) {
     window.addEventListener('focus', refrescar);
     document.addEventListener('visibilitychange', refrescar);
     return () => { activo = false; window.removeEventListener('focus', refrescar); document.removeEventListener('visibilitychange', refrescar); };
-  }, [almacen, listo, pendiente, ocupado, generando, producto, linea, verHistorial, editarGrupo, draft.id]);
+  }, [almacen, listo, pendiente, ocupado, generando, producto, linea, verHistorial, editarGrupo, factura, draft.id]);
 
   async function actualizar() {
     setOcupado(true);
@@ -258,7 +261,7 @@ function EditorPresupuestos({ user }) {
     setOcupado(true);
     try {
       if (pendiente || draft.lineas.length || draft.cliente.trim()) await guardarActual();
-      const empty = nuevoPresupuesto();
+      const empty = { ...nuevoPresupuesto(), emisorFactura: draft.emisorFactura };
       cambios.current += 1; setPendiente(false); setDraft(empty); guardarCache(empty, false); setDocumentos(null); setError(''); setAviso('Nuevo presupuesto. El anterior está guardado en tu cuenta.');
     } catch (e) { setError(e.message || 'No se ha podido guardar el presupuesto anterior.'); }
     finally { setOcupado(false); }
@@ -267,8 +270,8 @@ function EditorPresupuestos({ user }) {
   async function generar() {
     const fallo = validarPresupuesto(draft);
     if (fallo) { setError(fallo); return; }
-    if (generando) return;
-    setGenerando(true); setError(''); setAviso('Preparando Excel y PDF con tu plantilla…');
+    if (bloqueoExportar.current) return;
+    bloqueoExportar.current = true; setGenerando(true); setError(''); setAviso('Preparando Excel y PDF con tu plantilla…');
     try {
       const { generarArchivos } = await import('../lib/exportarPresupuesto');
       const result = await generarArchivos(draft);
@@ -278,14 +281,46 @@ function EditorPresupuestos({ user }) {
       urls.current.forEach(url => URL.revokeObjectURL(url));
       const excel = URL.createObjectURL(result.excel), pdf = URL.createObjectURL(result.pdf);
       urls.current = [excel, pdf];
-      setDocumentos({ excel, pdf });
+      setDocumentos({ excel, pdf, tipo: 'Presupuesto', numero: draft.numero });
       setAviso(guardado ? 'Presupuesto generado y guardado en Supabase.' : 'Archivos generados. Descárgalos; el borrador se conserva localmente hasta sincronizar.');
     } catch (e) { setError(e.message || 'No se ha podido generar el presupuesto. Inténtalo de nuevo.'); setAviso(''); }
-    finally { setGenerando(false); }
+    finally { bloqueoExportar.current = false; setGenerando(false); }
+  }
+
+  function abrirFactura() {
+    setError('');
+    const emisor = draft.emisorFactura || historial.find(p => p.emisorFactura)?.emisorFactura || { nombre: '', nif: '', direccion: '' };
+    const hoy = new Date().toLocaleDateString('sv-SE');
+    setFactura({ numero: draft.factura?.numero || '', fecha: draft.factura?.fecha || hoy, nif: draft.nif || '', direccion: draft.direccion || '', emisor: { ...emisor } });
+  }
+
+  async function generarFactura(event) {
+    event.preventDefault();
+    if (bloqueoExportar.current) return;
+    const doc = prepararFactura(draft, factura), fallo = validarFactura(doc);
+    if (fallo) { setError(fallo); return; }
+    bloqueoExportar.current = true; setGenerando(true); setError('');
+    setAviso('Preparando factura en Excel y PDF…');
+    try {
+      const { generarArchivosFactura } = await import('../lib/exportarPresupuesto');
+      const result = await generarArchivosFactura(doc);
+      const next = { ...draft, nif: doc.nif, direccion: doc.direccion, emisorFactura: doc.emisorFactura, factura: { numero: doc.numero, fecha: doc.fecha } };
+      cambiarDraft(next);
+      let guardado = false;
+      try { await guardarActual(next); guardado = true; }
+      catch (e) { setError(e.message === conflicto ? conflicto : 'La factura está lista, pero sus datos están pendientes de sincronizar.'); }
+      urls.current.forEach(url => URL.revokeObjectURL(url));
+      const excel = URL.createObjectURL(result.excel), pdf = URL.createObjectURL(result.pdf);
+      urls.current = [excel, pdf];
+      setDocumentos({ excel, pdf, tipo: 'Factura', numero: doc.numero });
+      setFactura(null);
+      setAviso(guardado ? 'Factura generada. Sus datos se han guardado con el presupuesto.' : 'Factura generada. Descárgala; los datos se conservan localmente hasta sincronizar.');
+    } catch (e) { setError(e.message || 'No se ha podido generar la factura.'); setAviso(''); }
+    finally { bloqueoExportar.current = false; setGenerando(false); }
   }
 
   const total = calcular(draft.lineas, Number(draft.iva));
-  const fileName = `Presupuesto-${draft.numero.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+  const fileName = `${documentos?.tipo || 'Presupuesto'}-${(documentos?.numero || draft.numero).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
   const nuevoProducto = () => { if (subcategoria === null) return; setError(''); setProducto({ nombre: '', importe: '', categoria, subcategoria_id: subcategoria === 'sin-clasificar' ? null : subcategoria }); };
   const nuevaSubcategoria = () => { setError(''); setEditarGrupo({ nombre: '', categoria }); };
 
@@ -328,12 +363,25 @@ function EditorPresupuestos({ user }) {
           <label className="block text-sm">Observaciones (opcional)<textarea maxLength={500} rows={3} value={draft.observaciones} onChange={e => cambiar('observaciones', e.target.value)} className={campo} placeholder="Condiciones, qué incluye el trabajo…" /></label>
           <details><summary className="cursor-pointer text-sm font-medium text-blue-700 dark:text-blue-200">IVA y datos para el pago</summary><div className="mt-3 space-y-3"><label className="block text-sm">IVA (%)<input type="number" min="0" max="100" step="0.01" value={draft.iva} onChange={e => cambiar('iva', e.target.value)} className={campo} /></label><label className="block text-sm">Datos para el pago (opcional)<input maxLength={120} value={draft.pago} onChange={e => cambiar('pago', e.target.value)} className={campo} /></label></div></details>
           <dl className="space-y-2 border-t border-slate-200 pt-4 dark:border-slate-700"><div className="flex justify-between"><dt>Base imponible</dt><dd>{euros(total.base)}</dd></div><div className="flex justify-between text-sm text-slate-500 dark:text-slate-300"><dt>IVA ({draft.iva || 0} %)</dt><dd>{euros(total.impuesto)}</dd></div><div className="flex justify-between text-2xl font-bold"><dt>Total</dt><dd>{euros(total.total)}</dd></div></dl>
-          <button onClick={generar} disabled={generando || !draft.lineas.length} className={`${boton} w-full`}>{generando ? 'Generando…' : 'Generar presupuesto'}</button>
-          {documentos && <div className="space-y-3 rounded-2xl bg-blue-50 p-4 dark:bg-blue-950"><p className="font-semibold">Listo con tu plantilla y tu logo</p><div className="flex flex-wrap gap-3"><a href={documentos.pdf} download={`${fileName}.pdf`} className={boton}>Descargar PDF</a><a href={documentos.excel} download={`${fileName}.xlsx`} className="rounded-xl border border-blue-300 px-4 py-3 font-semibold">Descargar Excel</a><a href={documentos.pdf} target="_blank" rel="noreferrer" className="px-2 py-3 text-sm underline">Ver PDF</a></div></div>}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><button onClick={generar} disabled={generando || !draft.lineas.length} className={boton}>{generando ? 'Generando…' : 'Generar presupuesto'}</button><button onClick={abrirFactura} disabled={generando || !draft.lineas.length} className="rounded-xl bg-teal-700 px-4 py-3 font-semibold text-white hover:bg-teal-800 disabled:opacity-50">Generar factura</button></div>
+          {documentos && <div className="space-y-3 rounded-2xl bg-blue-50 p-4 dark:bg-blue-950"><p className="font-semibold">{documentos.tipo} lista con tu plantilla y tu logo</p><div className="flex flex-wrap gap-3"><a href={documentos.pdf} download={`${fileName}.pdf`} className={boton}>Descargar PDF</a><a href={documentos.excel} download={`${fileName}.xlsx`} className="rounded-xl border border-blue-300 px-4 py-3 font-semibold">Descargar Excel</a><a href={documentos.pdf} target="_blank" rel="noreferrer" className="px-2 py-3 text-sm underline">Ver PDF</a></div></div>}
         </section>
       </div>
       </fieldset>
     </main>
+
+    {factura && <Modal titulo="Generar factura" ocupado={generando} cerrar={() => { setFactura(null); setError(''); }}><form onSubmit={generarFactura} className="space-y-4">
+      <p className="text-sm text-slate-600 dark:text-slate-300">Se usarán los productos, cantidades, precios e IVA del presupuesto actual.</p>
+      <label className="block text-sm">Número de factura<input autoFocus required maxLength={28} value={factura.numero} onChange={e => setFactura({ ...factura, numero: e.target.value })} placeholder="Ej.: 2026-001" className={campo} /></label>
+      <label className="block text-sm">Fecha de factura<input required type="date" value={factura.fecha} onChange={e => setFactura({ ...factura, fecha: e.target.value })} className={campo} /></label>
+      <p className="font-semibold">Cliente: {draft.cliente || 'Completa el nombre en el presupuesto'}</p>
+      <label className="block text-sm">NIF/CIF del cliente<input required maxLength={30} value={factura.nif} onChange={e => setFactura({ ...factura, nif: e.target.value })} className={campo} /></label>
+      <label className="block text-sm">Dirección del cliente<input required maxLength={120} value={factura.direccion} onChange={e => setFactura({ ...factura, direccion: e.target.value })} className={campo} /></label>
+      <details open={!factura.emisor.nombre || !factura.emisor.nif || !factura.emisor.direccion}><summary className="cursor-pointer text-sm font-semibold">Mis datos fiscales</summary><div className="mt-3 space-y-3">{[['nombre', 'Nombre fiscal', 80], ['nif', 'NIF del emisor', 30], ['direccion', 'Dirección del emisor', 120]].map(([key, label, max]) => <label key={key} className="block text-sm">{label}<input required maxLength={max} value={factura.emisor[key]} onChange={e => setFactura({ ...factura, emisor: { ...factura.emisor, [key]: e.target.value } })} className={campo} /></label>)}</div></details>
+      <p className="text-xs text-slate-500 dark:text-slate-300">El número es manual. Revisa que corresponda a tu serie y que no se repita.</p>
+      {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+      <button disabled={generando} className={`${boton} w-full`}>{generando ? 'Generando…' : 'Generar factura en Excel y PDF'}</button>
+    </form></Modal>}
 
     {editarGrupo && <Modal titulo={editarGrupo.id ? 'Editar subcategoría' : 'Nueva subcategoría'} ocupado={ocupado} cerrar={() => setEditarGrupo(null)}><form onSubmit={guardarSubcategoria} className="space-y-4"><p className="text-sm text-slate-500 dark:text-slate-300">Dentro de {CATEGORIAS.find(c => c.id === editarGrupo.categoria)?.nombre}</p><label className="block text-sm">Nombre de la subcategoría<input autoFocus required maxLength={80} value={editarGrupo.nombre} onChange={e => setEditarGrupo({ ...editarGrupo, nombre: e.target.value })} placeholder="Ej.: instalaciones, reparaciones…" className={campo} /></label>{error && <p role="alert" className="text-sm text-red-600">{error}</p>}<button disabled={ocupado} className={`${boton} w-full`}>{ocupado ? 'Guardando…' : 'Guardar subcategoría'}</button>{editarGrupo.id && <><p className="text-xs text-slate-500 dark:text-slate-300">Para borrarla, mueve antes sus productos a otra subcategoría.</p><button type="button" disabled={ocupado || productos.some(p => p.subcategoria_id === editarGrupo.id)} onClick={borrarSubcategoria} className="w-full py-2 text-sm text-red-600 disabled:opacity-40">Borrar subcategoría</button></>}</form></Modal>}
     {producto && <Modal titulo={producto.id ? 'Editar tarjeta' : 'Nueva tarjeta'} ocupado={ocupado} cerrar={() => setProducto(null)}><form onSubmit={guardarProducto} className="space-y-4">
