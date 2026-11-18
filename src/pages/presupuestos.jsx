@@ -57,6 +57,7 @@ function EditorPresupuestos({ user }) {
   const [generando, setGenerando] = useState(false);
   const [documentos, setDocumentos] = useState(null);
   const [factura, setFactura] = useState(null);
+  const [emisorCuenta, setEmisorCuenta] = useState(null);
   const bloqueoExportar = useRef(false);
   const urls = useRef([]);
 
@@ -69,7 +70,7 @@ function EditorPresupuestos({ user }) {
         await almacen.importarLocal();
         const data = await almacen.cargar();
         if (!activo) return;
-        setProductos(data.productos); setSubcategorias(data.subcategorias);
+        setProductos(data.productos); setSubcategorias(data.subcategorias); setEmisorCuenta(data.emisorFactura);
         setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
         const remoto = data.documentos.find(d => d.id === inicio.borrador.id);
         if (inicio.pendiente) {
@@ -131,7 +132,7 @@ function EditorPresupuestos({ user }) {
         const data = await almacen.cargar(false);
         if (!activo || cambios.current !== secuencia) return;
         almacen.adoptar(data);
-        setProductos(data.productos); setSubcategorias(data.subcategorias);
+        setProductos(data.productos); setSubcategorias(data.subcategorias); setEmisorCuenta(data.emisorFactura);
         setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
         const current = data.documentos.find(d => d.id === draft.id);
         if (current) { setDraft(current.contenido); setDocumentos(null); }
@@ -147,7 +148,7 @@ function EditorPresupuestos({ user }) {
     try {
       if (pendiente) await guardarActual();
       const data = await almacen.cargar();
-      setProductos(data.productos); setSubcategorias(data.subcategorias); setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
+      setProductos(data.productos); setSubcategorias(data.subcategorias); setEmisorCuenta(data.emisorFactura); setHistorial(data.documentos.map(d => ({ ...d.contenido, guardado: d.updated_at })));
       const current = data.documentos.find(d => d.id === draft.id);
       if (current) { setDraft(current.contenido); guardarCache(current.contenido, false); }
       setError(''); setAviso('Actualizado desde Supabase.');
@@ -289,9 +290,10 @@ function EditorPresupuestos({ user }) {
 
   function abrirFactura() {
     setError('');
-    const emisor = draft.emisorFactura || historial.find(p => p.emisorFactura)?.emisorFactura || { nombre: '', nif: '', direccion: '' };
+    const emisor = emisorCuenta;
+    if (!emisor) { setError('No se han podido cargar tus datos fiscales. Pulsa Actualizar antes de generar la factura.'); return; }
     const hoy = new Date().toLocaleDateString('sv-SE');
-    setFactura({ numero: draft.factura?.numero || '', fecha: draft.factura?.fecha || hoy, nif: draft.nif || '', direccion: draft.direccion || '', emisor: { ...emisor } });
+    setFactura({ numero: draft.factura?.numero || '', fecha: hoy, cliente: draft.cliente || '', nif: draft.nif || '', direccion: draft.direccion || '', correo: draft.contacto?.includes('@') ? draft.contacto : '', emisor: { ...emisor } });
   }
 
   async function generarFactura(event) {
@@ -304,7 +306,7 @@ function EditorPresupuestos({ user }) {
     try {
       const { generarArchivosFactura } = await import('../lib/exportarPresupuesto');
       const result = await generarArchivosFactura(doc);
-      const next = { ...draft, nif: doc.nif, direccion: doc.direccion, emisorFactura: doc.emisorFactura, factura: { numero: doc.numero, fecha: doc.fecha } };
+      const next = { ...draft, cliente: doc.cliente, contacto: doc.contacto, nif: doc.nif, direccion: doc.direccion, emisorFactura: doc.emisorFactura, factura: { numero: doc.numero, fecha: doc.fecha } };
       cambiarDraft(next);
       let guardado = false;
       try { await guardarActual(next); guardado = true; }
@@ -373,11 +375,12 @@ function EditorPresupuestos({ user }) {
     {factura && <Modal titulo="Generar factura" ocupado={generando} cerrar={() => { setFactura(null); setError(''); }}><form onSubmit={generarFactura} className="space-y-4">
       <p className="text-sm text-slate-600 dark:text-slate-300">Se usarán los productos, cantidades, precios e IVA del presupuesto actual.</p>
       <label className="block text-sm">Número de factura<input autoFocus required maxLength={28} value={factura.numero} onChange={e => setFactura({ ...factura, numero: e.target.value })} placeholder="Ej.: 2026-001" className={campo} /></label>
-      <label className="block text-sm">Fecha de factura<input required type="date" value={factura.fecha} onChange={e => setFactura({ ...factura, fecha: e.target.value })} className={campo} /></label>
-      <p className="font-semibold">Cliente: {draft.cliente || 'Completa el nombre en el presupuesto'}</p>
-      <label className="block text-sm">NIF/CIF del cliente<input required maxLength={30} value={factura.nif} onChange={e => setFactura({ ...factura, nif: e.target.value })} className={campo} /></label>
+      <p className="text-sm text-slate-500 dark:text-slate-300">Fecha de factura: {factura.fecha.split('-').reverse().join('/')}</p>
+      <label className="block text-sm">Nombre del cliente<input required maxLength={80} value={factura.cliente} onChange={e => setFactura({ ...factura, cliente: e.target.value })} className={campo} /></label>
+      <label className="block text-sm">DNI/CIF del cliente<input required maxLength={30} value={factura.nif} onChange={e => setFactura({ ...factura, nif: e.target.value })} className={campo} /></label>
       <label className="block text-sm">Dirección del cliente<input required maxLength={120} value={factura.direccion} onChange={e => setFactura({ ...factura, direccion: e.target.value })} className={campo} /></label>
-      <details open={!factura.emisor.nombre || !factura.emisor.nif || !factura.emisor.direccion}><summary className="cursor-pointer text-sm font-semibold">Mis datos fiscales</summary><div className="mt-3 space-y-3">{[['nombre', 'Nombre fiscal', 80], ['nif', 'NIF del emisor', 30], ['direccion', 'Dirección del emisor', 120]].map(([key, label, max]) => <label key={key} className="block text-sm">{label}<input required maxLength={max} value={factura.emisor[key]} onChange={e => setFactura({ ...factura, emisor: { ...factura.emisor, [key]: e.target.value } })} className={campo} /></label>)}</div></details>
+      <label className="block text-sm">Correo electrónico del cliente<input type="email" maxLength={80} value={factura.correo} onChange={e => setFactura({ ...factura, correo: e.target.value })} className={campo} /></label>
+      <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">Tus datos fiscales y tu logo se incluyen automáticamente.</p>
       <p className="text-xs text-slate-500 dark:text-slate-300">El número es manual. Revisa que corresponda a tu serie y que no se repita.</p>
       {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
       <button disabled={generando} className={`${boton} w-full`}>{generando ? 'Generando…' : 'Generar factura en Excel y PDF'}</button>

@@ -86,6 +86,8 @@ export async function crearExcel(draft, template, opciones = {}) {
     celda('F2', NOMBRE_COMERCIAL);
     if (factura) {
       celda('J2', 'FACTURA'); celda('J3', draft.numero); celda('J4', draft.fecha.split('-').reverse().join('/'));
+      celda('G5', '                             ' + (draft.emisorFactura.telefono || '648 78 06 82'));
+      celda('F7', '                                  ' + (draft.emisorFactura.correo || 'electroclimajoseadrian@gmail.com'));
       celda('I3', 'N.º de factura:'); celda('I4', 'Fecha factura:');
       fusionar('G3:H3'); fusionar('G4:H4'); fusionar('G6:H6');
       // Keep the original inset on every line, including wrapped fiscal addresses.
@@ -180,8 +182,8 @@ export async function crearPDF(draft, logoBytes, opciones = {}) {
       text(draft.emisorFactura.nombre, 143, 774, Math.min(9, 205 / Math.max(1, font.widthOfTextAtSize(clean(draft.emisorFactura.nombre), 1))));
       text(`NIF: ${draft.emisorFactura.nif}`, 143, 762, 9);
       partirTexto(draft.emisorFactura.direccion, 42).slice(0, 3).forEach((line, i) => text(line, 143, 750 - i * 10, 8));
-      text('648 78 06 82', 143, 718, 9);
-      text('electroclimajoseadrian@gmail.com', 143, 706, 8);
+      text(draft.emisorFactura.telefono || '648 78 06 82', 143, 718, 9);
+      text(draft.emisorFactura.correo || 'electroclimajoseadrian@gmail.com', 143, 706, 8);
     } else {
       text('648 78 06 82', 143, 746, 11);
       text('electroclimajoseadrian@gmail.com', 143, 730, 9);

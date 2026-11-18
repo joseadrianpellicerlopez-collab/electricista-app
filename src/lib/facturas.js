@@ -6,6 +6,7 @@ export function validarFactura(draft) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.fecha || '') || Number.isNaN(Date.parse(draft.fecha))) return 'Selecciona la fecha de factura.';
   const fallo = validarPresupuesto(draft);
   if (fallo) return fallo;
+  if (draft.contacto && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.contacto)) return 'Revisa el correo electrónico del cliente.';
   if (!draft.nif.trim() || !draft.direccion.trim()) return 'Completa el NIF/CIF y la dirección del cliente para la factura.';
   if (!draft.emisorFactura?.nombre?.trim() || !draft.emisorFactura?.nif?.trim() || !draft.emisorFactura?.direccion?.trim()) return 'Completa el nombre fiscal, NIF y dirección del emisor.';
   return '';
@@ -14,6 +15,7 @@ export function validarFactura(draft) {
 export function prepararFactura(draft, datos) {
   return {
     ...draft, numero: datos.numero.trim(), fecha: datos.fecha,
+    cliente: datos.cliente.trim(), contacto: datos.correo.trim(),
     nif: datos.nif.trim(), direccion: datos.direccion.trim(),
     emisorFactura: Object.fromEntries(Object.entries(datos.emisor).map(([key, value]) => [key, value.trim()])),
   };

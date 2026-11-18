@@ -29,7 +29,9 @@ export function crearAlmacen(owner, client = supabase) {
   }
   async function cargar(actualizarVersiones = true) {
     const [productos, documentos, subcategorias] = await Promise.all([listar('presupuesto_productos'), listar('presupuestos'), listar('presupuesto_subcategorias')]);
-    const data = { productos, documentos, subcategorias };
+    const { data: perfil, error } = await client.from('perfiles_facturacion').select('emisor').eq('owner_id', owner).maybeSingle();
+    if (error) throw error;
+    const data = { productos, documentos, subcategorias, emisorFactura: perfil?.emisor || null };
     if (actualizarVersiones) adoptar(data);
     return data;
   }
